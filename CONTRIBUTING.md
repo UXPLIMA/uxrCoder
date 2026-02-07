@@ -2,7 +2,7 @@
 
 Thank you for your interest in contributing to uxrCoder! This document provides guidelines and instructions for contributing.
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Code of Conduct](#code-of-conduct)
 - [Getting Started](#getting-started)
@@ -12,11 +12,11 @@ Thank you for your interest in contributing to uxrCoder! This document provides 
 - [Coding Standards](#coding-standards)
 - [Commit Messages](#commit-messages)
 
-## 📜 Code of Conduct
+## Code of Conduct
 
 By participating in this project, you agree to maintain a respectful and inclusive environment. Be kind, constructive, and professional in all interactions.
 
-## 🚀 Getting Started
+## Getting Started
 
 1. **Fork the repository** on GitHub
 2. **Clone your fork** locally:
@@ -29,7 +29,7 @@ By participating in this project, you agree to maintain a respectful and inclusi
    git remote add upstream https://github.com/UXPLIMA/uxrCoder.git
    ```
 
-## 🛠️ Development Setup
+## Development Setup
 
 ### Prerequisites
 
@@ -61,7 +61,7 @@ cd vscode-extension && npm run watch
 # In VS Code: Press F5 to launch Extension Development Host
 ```
 
-## ✏️ Making Changes
+## Making Changes
 
 1. **Create a feature branch**:
    ```bash
@@ -78,7 +78,7 @@ cd vscode-extension && npm run watch
 
 4. **Commit your changes** using [conventional commits](#commit-messages)
 
-## 🔄 Pull Request Process
+## Pull Request Process
 
 1. **Update documentation** if needed
 2. **Ensure all tests pass**
@@ -94,7 +94,7 @@ cd vscode-extension && npm run watch
 - [ ] CHANGELOG.md updated
 - [ ] All CI checks pass
 
-## 📝 Coding Standards
+## Coding Standards
 
 ### TypeScript (Server & Extension)
 
@@ -131,7 +131,7 @@ local function syncWithServer()
 end
 ```
 
-## 💬 Commit Messages
+## Commit Messages
 
 We use [Conventional Commits](https://www.conventionalcommits.org/):
 
@@ -162,7 +162,7 @@ docs(readme): update installation instructions
 refactor(extension): simplify tree view provider
 ```
 
-## 🐛 Reporting Bugs
+## Reporting Bugs
 
 When reporting bugs, please include:
 
@@ -173,7 +173,7 @@ When reporting bugs, please include:
 5. **Environment**: OS, Node.js version, Roblox Studio version
 6. **Logs**: Any relevant error messages
 
-## 💡 Suggesting Features
+## Suggesting Features
 
 Feature requests are welcome! Please include:
 
@@ -183,4 +183,4 @@ Feature requests are welcome! Please include:
 
 ---
 
-Thank you for contributing! 🎉
+Thank you for contributing!

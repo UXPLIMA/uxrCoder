@@ -29,7 +29,7 @@ uxrCoder enables seamless development workflow by synchronizing your Roblox Data
 
 - [Node.js](https://nodejs.org/) 18.0 or higher
 - [Roblox Studio](https://www.roblox.com/create)
-- [VS Code](https://code.visualstudio.com/) or [Antigravity](https://antigravity.dev/)
+- [VS Code](https://code.visualstudio.com/) or [Antigravity](https://antigravity.google/)
 
 ### Quick Start
 
