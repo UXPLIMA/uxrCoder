@@ -24,16 +24,35 @@ export type PropertyValue =
     | number
     | boolean
     | null
+    | Vector2Value
     | Vector3Value
+    | CFrameValue
     | Color3Value
+    | UDimValue
     | UDim2Value
+    | BrickColorValue
+    | NumberRangeValue
+    | RectValue
+    | EnumValue
     | Record<string, unknown>;
+
+export interface Vector2Value {
+    type: 'Vector2';
+    x: number;
+    y: number;
+}
 
 export interface Vector3Value {
     type: 'Vector3';
     x: number;
     y: number;
     z: number;
+}
+
+export interface CFrameValue {
+    type: 'CFrame';
+    position: Vector3Value;
+    orientation: Vector3Value; // Euler angles
 }
 
 export interface Color3Value {
@@ -43,21 +62,65 @@ export interface Color3Value {
     b: number;
 }
 
+export interface UDimValue {
+    type: 'UDim';
+    scale: number;
+    offset: number;
+}
+
 export interface UDim2Value {
     type: 'UDim2';
-    xScale: number;
-    xOffset: number;
-    yScale: number;
-    yOffset: number;
+    x: UDimValue;
+    y: UDimValue;
 }
 
-export type SyncMessageType = 'create' | 'update' | 'delete' | 'full_sync';
+export interface BrickColorValue {
+    type: 'BrickColor';
+    number: number;
+    name: string;
+}
 
-export interface SyncMessage {
-    type: SyncMessageType;
+export interface NumberRangeValue {
+    type: 'NumberRange';
+    min: number;
+    max: number;
+}
+
+export interface RectValue {
+    type: 'Rect';
+    min: Vector2Value;
+    max: Vector2Value;
+}
+
+export interface EnumValue {
+    type: 'Enum';
+    enumType: string;
+    value: number;
+    name: string;
+}
+
+export interface CommandMessage {
+    type: 'command';
+    action: 'play' | 'run' | 'stop';
     timestamp: number;
-    path: string[];
-    instance?: RobloxInstance;
-    property?: { name: string; value: PropertyValue };
-    instances?: RobloxInstance[];
 }
+
+export interface LogMessage {
+    type: 'log';
+    level: 'info' | 'warning' | 'error';
+    message: string;
+    timestamp: number;
+    source?: string;
+}
+
+export type DataModelSyncType = 'create' | 'update' | 'delete' | 'full_sync';
+
+export type SyncMessage =
+    | { type: DataModelSyncType; timestamp: number; path: string[]; instance?: RobloxInstance; property?: { name: string; value: PropertyValue }; instances?: RobloxInstance[] }
+    | CommandMessage
+    | LogMessage;
+
+export type PendingChange = SyncMessage & {
+    id: string;
+    confirmed: boolean;
+};

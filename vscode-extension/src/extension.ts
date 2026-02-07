@@ -12,10 +12,13 @@
  */
 
 import * as vscode from 'vscode';
+import type { LogMessage } from './types';
 import { RobloxExplorerProvider, RobloxTreeItem } from './treeView';
 import { SyncClient } from './syncClient';
 import { PropertyEditorProvider } from './propertyEditor';
 import { RobloxScriptProvider } from './scriptProvider';
+import { RobloxClassBrowserProvider } from './classBrowser';
+import { ConnectionStatusBar } from './statusBar';
 
 // =============================================================================
 // Global State
@@ -29,6 +32,21 @@ let explorerProvider: RobloxExplorerProvider;
 
 /** Script content provider for virtual documents */
 let scriptProvider: RobloxScriptProvider;
+
+/** Status bar item */
+let statusBar: ConnectionStatusBar;
+
+/** Output channel for Roblox logs */
+let robloxOutputChannel: vscode.OutputChannel;
+
+/** Current selection in the tree view */
+let currentSelection: RobloxTreeItem | undefined;
+
+/** File system watcher for lua scripts */
+let fileWatcher: vscode.FileSystemWatcher | undefined;
+
+/** Map to track files being synced from server to avoid loops */
+const syncingFromServer = new Map<string, boolean>();
 
 // =============================================================================
 // Extension Lifecycle
@@ -52,7 +70,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const treeView = vscode.window.createTreeView('robloxExplorer', {
         treeDataProvider: explorerProvider,
         showCollapseAll: true,
-        canSelectMany: false,
+        canSelectMany: true,
     });
 
     // Initialize script content provider
@@ -67,26 +85,66 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.window.registerWebviewViewProvider('robloxProperties', propertyProvider)
     );
 
+    // Initialize class browser
+    const classBrowserProvider = new RobloxClassBrowserProvider(context.extensionUri, syncClient);
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider('robloxClassBrowser', classBrowserProvider)
+    );
+
+    // Initialize status bar
+    statusBar = new ConnectionStatusBar(context);
+
+    // Listen to connection status changes
+    syncClient.onStatusChange((status, message) => {
+        statusBar.update(status, message);
+        if (status === 'connected') {
+            explorerProvider.refresh();
+        }
+    });
+
     // Register all commands
     registerCommands(context, propertyProvider);
 
     // Handle tree selection changes
-    treeView.onDidChangeSelection(event => {
+    treeView.onDidChangeSelection((event: vscode.TreeViewSelectionChangeEvent<RobloxTreeItem>) => {
         if (event.selection.length > 0) {
-            propertyProvider.showProperties(event.selection[0]);
+            currentSelection = event.selection[0];
+            propertyProvider.showProperties(event.selection as RobloxTreeItem[]);
+        } else {
+            currentSelection = undefined;
         }
     });
 
     // Listen to sync client updates
     syncClient.onUpdate(() => {
         explorerProvider.refresh();
+        updateOpenScriptDocuments();
     });
+
+    // Set up file system watcher for .lua files
+    setupFileWatcher(context);
 
     // Auto-connect on startup
     vscode.commands.executeCommand('robloxSync.connect');
 
     // Add tree view to subscriptions
     context.subscriptions.push(treeView);
+
+    // Initialize output channel
+    robloxOutputChannel = vscode.window.createOutputChannel('Roblox Output');
+    context.subscriptions.push(robloxOutputChannel);
+
+    // Event listener for incoming logs from Roblox Studio
+    syncClient.onLog((log: LogMessage) => {
+        const timestamp = new Date(log.timestamp * 1000).toLocaleTimeString();
+        const levelTag = log.level.toUpperCase();
+        robloxOutputChannel.appendLine(`[${timestamp}] [${levelTag}] ${log.message}`);
+
+        // Auto-show output channel on error? Maybe configurable.
+        if (log.level === 'error') {
+            robloxOutputChannel.show(true);
+        }
+    });
 }
 
 /**
@@ -97,7 +155,135 @@ export function deactivate(): void {
     if (syncClient) {
         syncClient.disconnect();
     }
+    if (statusBar) {
+        statusBar.dispose();
+    }
+    if (fileWatcher) {
+        fileWatcher.dispose();
+    }
     console.log('uxrCoder extension deactivated');
+}
+
+// =============================================================================
+// File Synchronization
+// =============================================================================
+
+/**
+ * Set up file system watcher for .lua files to sync changes to Studio.
+ *
+ * @param context - Extension context
+ */
+function setupFileWatcher(context: vscode.ExtensionContext): void {
+    // Watch all .lua files in the workspace
+    fileWatcher = vscode.workspace.createFileSystemWatcher('**/*.lua');
+
+    // Handle file changes
+    fileWatcher.onDidChange(async (uri) => {
+        // Skip if this change came from server
+        if (syncingFromServer.get(uri.fsPath)) {
+            return;
+        }
+
+        console.log(`📝 File changed: ${uri.fsPath}`);
+
+        // Get the path from the file URI
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders) return;
+
+        const workspaceRoot = workspaceFolders[0].uri.fsPath;
+        const relativePath = uri.fsPath.replace(workspaceRoot + '/', '').replace(/\.lua$/, '');
+        const path = relativePath.split('/');
+
+        // Read the file content
+        try {
+            const document = await vscode.workspace.openTextDocument(uri);
+            const newSource = document.getText();
+
+            // Update the Source property
+            syncClient.updateProperty(path, 'Source', newSource);
+            console.log(`✅ Synced ${path.join('.')} to Studio`);
+        } catch (error) {
+            console.error(`Failed to sync file: ${error}`);
+        }
+    });
+
+    // Handle file deletion
+    fileWatcher.onDidDelete((uri) => {
+        if (syncingFromServer.get(uri.fsPath)) {
+            return;
+        }
+
+        console.log(`🗑️ File deleted: ${uri.fsPath}`);
+
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders) return;
+
+        const workspaceRoot = workspaceFolders[0].uri.fsPath;
+        const relativePath = uri.fsPath.replace(workspaceRoot + '/', '').replace(/\.lua$/, '');
+        const path = relativePath.split('/');
+
+        syncClient.deleteInstance(path);
+        console.log(`✅ Deleted ${path.join('.')} from Studio`);
+    });
+
+    context.subscriptions.push(fileWatcher);
+}
+
+/**
+ * Update open script documents when server sends updates.
+ * This ensures that if you edit a script in Studio, the open file in VS Code gets updated.
+ */
+async function updateOpenScriptDocuments(): Promise<void> {
+    const fs = await import('fs');
+    const path = await import('path');
+
+    // Get workspace root
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders) return;
+
+    const workspaceRoot = workspaceFolders[0].uri.fsPath;
+
+    // Check all open text documents
+    for (const doc of vscode.workspace.textDocuments) {
+        // Only process .lua files in the workspace
+        if (!doc.uri.fsPath.endsWith('.lua') || !doc.uri.fsPath.startsWith(workspaceRoot)) {
+            continue;
+        }
+
+        // Get the instance path from file path
+        const relativePath = doc.uri.fsPath.replace(workspaceRoot + '/', '').replace(/\.lua$/, '');
+        const instancePath = relativePath.split('/');
+
+        // Get the instance from sync client
+        const instance = syncClient.getInstance(instancePath);
+        if (!instance || instance.properties.Source === undefined) {
+            continue;
+        }
+
+        // Check if content is different
+        const currentContent = doc.getText();
+        const serverContent = String(instance.properties.Source);
+
+        if (currentContent !== serverContent) {
+            console.log(`🔄 Updating open document: ${instancePath.join('.')}`);
+
+            // Mark as syncing from server to avoid triggering file watcher
+            syncingFromServer.set(doc.uri.fsPath, true);
+
+            try {
+                // Write the updated content to disk
+                fs.writeFileSync(doc.uri.fsPath, serverContent, 'utf8');
+
+                // Clear the flag after a short delay
+                setTimeout(() => {
+                    syncingFromServer.delete(doc.uri.fsPath);
+                }, 100);
+            } catch (error) {
+                console.error(`Failed to update document: ${error}`);
+                syncingFromServer.delete(doc.uri.fsPath);
+            }
+        }
+    }
 }
 
 // =============================================================================
@@ -125,7 +311,33 @@ function registerCommands(
         vscode.commands.registerCommand('robloxSync.delete', handleDelete),
         vscode.commands.registerCommand('robloxSync.rename', handleRename),
         vscode.commands.registerCommand('robloxSync.copyPath', handleCopyPath),
-        vscode.commands.registerCommand('robloxSync.openScript', handleOpenScript)
+        vscode.commands.registerCommand('robloxSync.openScript', handleOpenScript),
+
+        // Debugging commands
+        vscode.commands.registerCommand('robloxSync.play', handlePlay),
+        vscode.commands.registerCommand('robloxSync.run', handleRun),
+        vscode.commands.registerCommand('robloxSync.stop', handleStop),
+
+        // Build commands
+        vscode.commands.registerCommand('robloxSync.build', handleBuild),
+        vscode.commands.registerCommand('robloxSync.exportModel', handleExportModel),
+        vscode.commands.registerCommand('robloxSync.regenerateSourcemap', handleRegenerateSourcemap),
+
+        // Wally commands
+        vscode.commands.registerCommand('robloxSync.wallyInit', handleWallyInit),
+        vscode.commands.registerCommand('robloxSync.wallyInstall', handleWallyInstall),
+
+        // Linting & Formatting commands
+        vscode.commands.registerCommand('robloxSync.seleneInit', handleSeleneInit),
+        vscode.commands.registerCommand('robloxSync.seleneLint', handleSeleneLint),
+        vscode.commands.registerCommand('robloxSync.styluaInit', handleStyLuaInit),
+        vscode.commands.registerCommand('robloxSync.styluaFormat', handleStyLuaFormat),
+
+        // Version Control commands
+        vscode.commands.registerCommand('robloxSync.generateGitignore', handleGenerateGitignore),
+
+        // Project commands
+        vscode.commands.registerCommand('robloxSync.initProject', handleInitProject)
     );
 }
 
@@ -139,8 +351,7 @@ function registerCommands(
 async function handleConnect(): Promise<void> {
     try {
         await syncClient.connect();
-        vscode.window.showInformationMessage('🟢 Connected to uxrCoder server!');
-        explorerProvider.refresh();
+        // Status bar handles the success UI
     } catch (error) {
         vscode.window.showErrorMessage(`Connection failed: ${error}`);
     }
@@ -152,7 +363,7 @@ async function handleConnect(): Promise<void> {
 function handleDisconnect(): void {
     syncClient.disconnect();
     explorerProvider.clear();
-    vscode.window.showInformationMessage('🔴 Disconnected from uxrCoder server');
+    // Status bar handles the disconnect UI
 }
 
 /**
@@ -166,10 +377,30 @@ function handleRefresh(): void {
  * Handle the insert object command.
  *
  * @param item - The tree item to insert under
+ * @param predefinedClassName - Optional class name to skip selection
  */
-async function handleInsertObject(item: RobloxTreeItem): Promise<void> {
+async function handleInsertObject(item?: RobloxTreeItem, predefinedClassName?: string): Promise<void> {
+    // If called from ClassBrowser, item might be undefined if no tree selection.
+    // In that case, we should try to use the selected item from the tree view if possible.
+    // But explorerProvider doesn't expose selection.
+    // We will just let it happen on root or handle it inside.
+
+    // if (!item && !predefinedClassName) return; // Allow if we have a class name?
+    // Actually we need a parent.
+    if (!item) {
+        if (currentSelection) {
+            item = currentSelection;
+        } else {
+            // Try to get selection from tree view?
+            // VS Code API doesn't allow getting tree view selection easily from outside unless we track it.
+            // We track selection in treeView.onDidChangeSelection but strictly for property editor.
+            vscode.window.showErrorMessage('Please select a parent instance in the explorer first.');
+            return;
+        }
+    }
+
     // Show class picker
-    const className = await vscode.window.showQuickPick(
+    const className = predefinedClassName || await vscode.window.showQuickPick(
         [
             // Common instances
             { label: 'Folder', description: 'Container for organizing instances' },
@@ -202,13 +433,15 @@ async function handleInsertObject(item: RobloxTreeItem): Promise<void> {
         }
     );
 
-    if (!className) return;
+    const label = typeof className === 'string' ? className : className?.label;
+    if (!label) return;
 
     // Get instance name
+    const initialName = label;
     const name = await vscode.window.showInputBox({
         prompt: 'Enter instance name',
-        value: className.label,
-        validateInput: value => {
+        value: initialName,
+        validateInput: (value: string) => {
             if (!value || value.trim().length === 0) {
                 return 'Name cannot be empty';
             }
@@ -218,11 +451,37 @@ async function handleInsertObject(item: RobloxTreeItem): Promise<void> {
 
     if (!name) return;
 
+    // Check if instance with same name already exists and make it unique
+    const parentInstance = item ? syncClient.getInstance(item.path) : null;
+    const siblings = parentInstance?.children || syncClient.getAllInstances();
+
+    let uniqueName = name.trim();
+    let counter = 2;
+
+    while (siblings.some(child => child.name === uniqueName)) {
+        uniqueName = `${name.trim()}_${counter}`;
+        counter++;
+    }
+
+    // Notify user if name was changed
+    if (uniqueName !== name.trim()) {
+        vscode.window.showInformationMessage(
+            `Instance renamed to "${uniqueName}" to avoid name collision`
+        );
+    }
+
     // Create the instance
-    syncClient.createInstance(item.path, className.label, name.trim());
+    const targetPath = item ? item.path : [];
+    // If no item selected, maybe default to Workspace if possible?
+    // Actually createInstance with empty path might put it in workspace or fail?
+    // SyncClient.createInstance expects parentPath.
+    // If targetPath is empty, it puts it in root (DataModel), which is usually allowed for Services.
+    // But usually we want to put parts in Workspace.
+
+    syncClient.createInstance(targetPath, label, uniqueName);
     explorerProvider.refresh();
 
-    vscode.window.showInformationMessage(`Created ${className.label}: ${name}`);
+    vscode.window.showInformationMessage(`Created ${label}: ${uniqueName}`);
 }
 
 /**
@@ -230,9 +489,11 @@ async function handleInsertObject(item: RobloxTreeItem): Promise<void> {
  *
  * @param item - The tree item to delete
  */
-async function handleDelete(item: RobloxTreeItem): Promise<void> {
+async function handleDelete(item?: RobloxTreeItem): Promise<void> {
+    if (!item) return;
+
     const confirm = await vscode.window.showWarningMessage(
-        `Are you sure you want to delete "${item.label}"?`,
+        `Are you sure you want to delete "${item.instance.name}"?`,
         { modal: true },
         'Delete'
     );
@@ -240,7 +501,7 @@ async function handleDelete(item: RobloxTreeItem): Promise<void> {
     if (confirm === 'Delete') {
         syncClient.deleteInstance(item.path);
         explorerProvider.refresh();
-        vscode.window.showInformationMessage(`Deleted: ${item.label}`);
+        vscode.window.showInformationMessage(`Deleted: ${item.instance.name}`);
     }
 }
 
@@ -249,11 +510,13 @@ async function handleDelete(item: RobloxTreeItem): Promise<void> {
  *
  * @param item - The tree item to rename
  */
-async function handleRename(item: RobloxTreeItem): Promise<void> {
+async function handleRename(item?: RobloxTreeItem): Promise<void> {
+    if (!item) return;
+
     const newName = await vscode.window.showInputBox({
         prompt: 'Enter new name',
-        value: item.label as string,
-        validateInput: value => {
+        value: item.instance.name,
+        validateInput: (value: string) => {
             if (!value || value.trim().length === 0) {
                 return 'Name cannot be empty';
             }
@@ -261,7 +524,7 @@ async function handleRename(item: RobloxTreeItem): Promise<void> {
         },
     });
 
-    if (newName && newName.trim() !== item.label) {
+    if (newName && newName.trim() !== item.instance.name) {
         syncClient.updateProperty(item.path, 'Name', newName.trim());
         explorerProvider.refresh();
     }
@@ -272,31 +535,412 @@ async function handleRename(item: RobloxTreeItem): Promise<void> {
  *
  * @param item - The tree item to copy path from
  */
-function handleCopyPath(item: RobloxTreeItem): void {
+function handleCopyPath(item?: RobloxTreeItem): void {
+    if (!item) return;
     const path = 'game.' + item.path.join('.');
     vscode.env.clipboard.writeText(path);
     vscode.window.showInformationMessage(`Copied: ${path}`);
 }
 
 /**
- * Handle the open script command.
+ * Handle opening a script for editing.
+ * Creates/opens a real file in the workspace folder for editing.
  *
- * @param item - The script tree item to open
+ * @param item - The tree item representing the script
  */
-async function handleOpenScript(item: RobloxTreeItem): Promise<void> {
+async function handleOpenScript(item?: RobloxTreeItem): Promise<void> {
+    if (!item) return;
+
     const instance = syncClient.getInstance(item.path);
 
     if (instance && instance.properties.Source !== undefined) {
-        // Create virtual document URI
-        const uri = vscode.Uri.parse(`roblox-script:/${item.path.join('/')}.lua`);
+        // Import modules upfront
+        const fs = await import('fs');
+        const path = await import('path');
+
+        // Get workspace folders
+        let workspaceRoot: string;
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            // Try to use the project's server/workspace folder as fallback
+            const projectRoot = path.dirname(path.dirname(__dirname));
+            const serverWorkspace = path.join(projectRoot, 'server', 'workspace');
+
+            if (fs.existsSync(serverWorkspace)) {
+                workspaceRoot = serverWorkspace;
+            } else {
+                // Show warning and offer to open a folder
+                const action = await vscode.window.showWarningMessage(
+                    'No workspace folder is open. Please open a workspace folder to edit scripts.',
+                    'Open Folder'
+                );
+
+                if (action === 'Open Folder') {
+                    await vscode.commands.executeCommand('vscode.openFolder');
+                }
+                return;
+            }
+        } else {
+            workspaceRoot = workspaceFolders[0].uri.fsPath;
+        }
+
+        // Determine correct file extension based on script type
+        let extension = '.lua';
+        if (instance.className === 'Script') {
+            extension = '.server.lua';
+        } else if (instance.className === 'LocalScript') {
+            extension = '.client.lua';
+        }
+        // ModuleScript uses .lua (default)
+
+        // Create path for the script file
+        // Example: ServerScriptService/MyScript -> ServerScriptService/MyScript.server.lua
+        const relativePath = item.path.join('/') + extension;
+        const filePath = vscode.Uri.file(`${workspaceRoot}/${relativePath}`);
 
         try {
-            const doc = await vscode.workspace.openTextDocument(uri);
+            // Create directory structure if needed
+            const dir = path.dirname(filePath.fsPath);
+
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+            }
+
+            // Write the script source to file
+            const source = String(instance.properties.Source);
+            fs.writeFileSync(filePath.fsPath, source, 'utf8');
+
+            // Open the file for editing
+            const doc = await vscode.workspace.openTextDocument(filePath);
             await vscode.window.showTextDocument(doc, { preview: false });
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to open script: ${error}`);
         }
     } else {
         vscode.window.showWarningMessage('This instance does not have a Source property');
+    }
+}
+
+/**
+ * Handle the play command.
+ */
+function handlePlay(): void {
+    if (!syncClient.isConnected()) {
+        vscode.window.showErrorMessage('Not connected to Roblox Studio');
+        return;
+    }
+    syncClient.sendCommand('play');
+    vscode.window.showInformationMessage('Starting Play Solo...');
+    robloxOutputChannel.show(true);
+}
+
+/**
+ * Handle the run command.
+ */
+function handleRun(): void {
+    if (!syncClient.isConnected()) {
+        vscode.window.showErrorMessage('Not connected to Roblox Studio');
+        return;
+    }
+    syncClient.sendCommand('run');
+    vscode.window.showInformationMessage('Starting Run...');
+    robloxOutputChannel.show(true);
+}
+
+/**
+ * Handle the stop command.
+ */
+function handleStop(): void {
+    if (!syncClient.isConnected()) {
+        vscode.window.showErrorMessage('Not connected to Roblox Studio');
+        return;
+    }
+    syncClient.sendCommand('stop');
+    vscode.window.showInformationMessage('Stopping simulation...');
+}
+
+/**
+ * Handle the build command.
+ */
+async function handleBuild(): Promise<void> {
+    try {
+        const path = await syncClient.buildProject('rbxlx');
+        vscode.window.showInformationMessage(`Project built to: ${path}`);
+    } catch (error) {
+        vscode.window.showErrorMessage(`Build failed: ${error}`);
+    }
+}
+
+/**
+ * Handle the export model command.
+ * 
+ * @param item - The tree item to export
+ */
+async function handleExportModel(item?: RobloxTreeItem): Promise<void> {
+    if (!item) return;
+
+    try {
+        const path = await syncClient.exportInstance(item.path);
+        vscode.window.showInformationMessage(`Exported ${item.instance.name} to: ${path}`);
+    } catch (error) {
+        vscode.window.showErrorMessage(`Export failed: ${error}`);
+    }
+}
+
+/**
+ * Handle the regenerate sourcemap command.
+ */
+async function handleRegenerateSourcemap(): Promise<void> {
+    try {
+        await syncClient.regenerateSourcemap();
+        vscode.window.showInformationMessage('Sourcemap regenerated successfully');
+    } catch (error) {
+        vscode.window.showErrorMessage(`Sourcemap regeneration failed: ${error}`);
+    }
+}
+
+/**
+ * Handle the Wally Init command.
+ */
+function handleWallyInit(): void {
+    const terminal = vscode.window.createTerminal('Wally');
+    terminal.show();
+    terminal.sendText('wally init');
+}
+
+/**
+ * Handle the Wally Install command.
+ * 
+ * @param uri - Optional URI from context menu
+ */
+function handleWallyInstall(uri?: vscode.Uri): void {
+    const terminal = vscode.window.createTerminal('Wally');
+    terminal.show();
+
+    // If triggered from context menu on wally.toml, we might want to cd to that directory?
+    // Usually wally install is run from project root.
+    // If uri is provided, we could verify it's wally.toml or use its folder.
+
+    if (uri && uri.scheme === 'file') {
+        // If the file is specifically wally.toml, use its directory
+        // const dir = uri.fsPath.endsWith('wally.toml') ? path.dirname(uri.fsPath) : uri.fsPath;
+        // terminal.sendText(`cd "${dir}"`); 
+        // But creating a terminal usually starts at workspace root anyway.
+        // Let's just run wally install.
+    }
+
+    terminal.sendText('wally install');
+}
+
+/**
+ * Handle Selene Init command.
+ */
+async function handleSeleneInit(): Promise<void> {
+    const wsFolders = vscode.workspace.workspaceFolders;
+    if (!wsFolders) {
+        vscode.window.showErrorMessage('No workspace open');
+        return;
+    }
+
+    const configPath = vscode.Uri.joinPath(wsFolders[0].uri, 'selene.toml');
+    const defaultConfig = `std = "roblox"
+
+[lints]
+unused_variable = "allow"
+shadowing = "allow"
+`;
+
+    try {
+        await vscode.workspace.fs.writeFile(configPath, Buffer.from(defaultConfig, 'utf8'));
+        vscode.window.showInformationMessage('Created selene.toml');
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to create selene.toml: ${error}`);
+    }
+}
+
+/**
+ * Handle Selene Lint command.
+ */
+function handleSeleneLint(): void {
+    const terminal = vscode.window.createTerminal('Selene');
+    terminal.show();
+    terminal.sendText('selene .');
+}
+
+/**
+ * Handle StyLua Init command.
+ */
+async function handleStyLuaInit(): Promise<void> {
+    const wsFolders = vscode.workspace.workspaceFolders;
+    if (!wsFolders) {
+        vscode.window.showErrorMessage('No workspace open');
+        return;
+    }
+
+    const configPath = vscode.Uri.joinPath(wsFolders[0].uri, 'stylua.toml');
+    const defaultConfig = `column_width = 120
+indent_type = "Tabs"
+indent_width = 4
+quote_style = "AutoPreferDouble"
+call_parentheses = "Always"
+`;
+
+    try {
+        await vscode.workspace.fs.writeFile(configPath, Buffer.from(defaultConfig, 'utf8'));
+        vscode.window.showInformationMessage('Created stylua.toml');
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to create stylua.toml: ${error}`);
+    }
+}
+
+/**
+ * Handle StyLua Format command.
+ */
+function handleStyLuaFormat(): void {
+    const terminal = vscode.window.createTerminal('StyLua');
+    terminal.show();
+    terminal.sendText('stylua .');
+}
+
+/**
+ * Handle Generate .gitignore command.
+ */
+async function handleGenerateGitignore(): Promise<void> {
+    const wsFolders = vscode.workspace.workspaceFolders;
+    if (!wsFolders) {
+        vscode.window.showErrorMessage('No workspace open');
+        return;
+    }
+
+    const configPath = vscode.Uri.joinPath(wsFolders[0].uri, '.gitignore');
+    const content = `# Roblox
+*.rbxl
+*.rbxlx
+*.rbxm
+*.rbxmx
+*.tmp
+
+# Rojo
+/_index
+/sourcemap.json
+
+# Wally
+/Packages
+/_wally
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# OS
+.DS_Store
+Thumbs.db
+`;
+
+    try {
+        // Check if exists
+        try {
+            await vscode.workspace.fs.stat(configPath);
+            const answer = await vscode.window.showWarningMessage(
+                '.gitignore already exists. Overwrite?',
+                'Yes', 'No'
+            );
+            if (answer !== 'Yes') return;
+        } catch {
+            // Does not exist, proceed
+        }
+
+        await vscode.workspace.fs.writeFile(configPath, Buffer.from(content, 'utf8'));
+        vscode.window.showInformationMessage('Created .gitignore');
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to create .gitignore: ${error}`);
+    }
+}
+
+/**
+ * Handle Initialize Project command.
+ */
+async function handleInitProject(): Promise<void> {
+    const wsFolders = vscode.workspace.workspaceFolders;
+    if (!wsFolders) {
+        vscode.window.showErrorMessage('No workspace open');
+        return;
+    }
+
+    const rootUri = wsFolders[0].uri;
+
+    // Check if project already exists
+    const projectFile = vscode.Uri.joinPath(rootUri, 'default.project.json');
+    try {
+        await vscode.workspace.fs.stat(projectFile);
+        const answer = await vscode.window.showWarningMessage(
+            'default.project.json already exists. Initialize anyway?',
+            'Yes', 'No'
+        );
+        if (answer !== 'Yes') return;
+    } catch {
+        // Proceed
+    }
+
+    try {
+        // Create directories
+        await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(rootUri, 'src', 'server'));
+        await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(rootUri, 'src', 'client'));
+        await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(rootUri, 'src', 'shared'));
+
+        // Create default.project.json
+        const projectConfig = {
+            name: "MyRobloxProject",
+            tree: {
+                "$className": "DataModel",
+                "ReplicatedStorage": {
+                    "$path": "src/shared"
+                },
+                "ServerScriptService": {
+                    "$path": "src/server"
+                },
+                "StarterPlayer": {
+                    "StarterPlayerScripts": {
+                        "$path": "src/client"
+                    }
+                }
+            }
+        };
+        await vscode.workspace.fs.writeFile(
+            projectFile,
+            Buffer.from(JSON.stringify(projectConfig, null, 2), 'utf8')
+        );
+
+        // Create README.md
+        const readme = `# My Roblox Project
+
+This project was initialized with uxrCoder.
+
+## Structure
+
+- \`src/server\`: Server-side scripts (ServerScriptService)
+- \`src/client\`: Client-side scripts (StarterPlayerScripts)
+- \`src/shared\`: Shared modules (ReplicatedStorage)
+
+## Getting Started
+
+1. Connect uxrCoder plugin in Roblox Studio.
+2. Start syncing!
+`;
+        await vscode.workspace.fs.writeFile(
+            vscode.Uri.joinPath(rootUri, 'README.md'),
+            Buffer.from(readme, 'utf8')
+        );
+
+        // Generate .gitignore if it doesn't exist
+        await handleGenerateGitignore();
+
+        vscode.window.showInformationMessage('Project initialized successfully! 🎉');
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to initialize project: ${error}`);
     }
 }

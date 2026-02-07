@@ -16,6 +16,10 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createServer, Server } from 'http';
 import { SyncEngine } from './syncEngine';
 import { FileMapper } from './fileMapper';
+import { Watcher } from './watcher';
+import { ProjectLoader } from './projectLoader';
+import { BuildSystem } from './buildSystem';
+import { SourcemapGenerator } from './sourcemap';
 import type { SyncMessage, RobloxInstance, ServerConfig, HealthResponse, SyncResponse } from './types';
 
 // =============================================================================
@@ -58,9 +62,47 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
 const server: Server = createServer(app);
 const wss = new WebSocketServer({ server });
 
+// Load project config
+const projectConfig = ProjectLoader.load(config.workspacePath);
+
 // Core services
 const syncEngine = new SyncEngine();
-const fileMapper = new FileMapper(config.workspacePath);
+const fileMapper = new FileMapper(config.workspacePath, projectConfig);
+const watcher = new Watcher(config.workspacePath, syncEngine, fileMapper);
+const buildSystem = new BuildSystem(config.workspacePath);
+const sourcemapGenerator = new SourcemapGenerator(config.workspacePath);
+
+// Link fileMapper to syncEngine for instance lookups
+fileMapper.setSyncEngine(syncEngine);
+
+// Debounce sourcemap generation
+let sourcemapTimeout: NodeJS.Timeout | null = null;
+const scheduleSourcemapGeneration = () => {
+    if (sourcemapTimeout) clearTimeout(sourcemapTimeout);
+    sourcemapTimeout = setTimeout(() => {
+        if (projectConfig) {
+            // console.log('🗺️ Regenerating sourcemap.json...');
+            sourcemapGenerator.generate(projectConfig).catch(err => {
+                console.error('❌ Failed to regenerate sourcemap:', err);
+            });
+        }
+    }, 1000);
+};
+
+// Connection to FileMapper for ignoring loopback events
+fileMapper.onWrite((path) => watcher.ignore(path));
+
+// Signal propagation for file system events
+watcher.onChange((change) => {
+    broadcastToClients(change);
+    scheduleSourcemapGeneration();
+});
+
+// Start watching for file changes
+watcher.start();
+
+// Initial sourcemap generation
+scheduleSourcemapGeneration();
 
 // Connected VS Code clients
 const clients: Set<WebSocket> = new Set();
@@ -73,14 +115,17 @@ const clients: Set<WebSocket> = new Set();
  * Handle new WebSocket connections from VS Code extensions.
  */
 wss.on('connection', (ws: WebSocket) => {
-    console.log('📡 VS Code client connected');
+    console.log('[WS] Client connected');
     clients.add(ws);
 
-    // Send current state to new client
+    // Synchronize initial state with the new client
+    const instances = syncEngine.getAllInstances();
+    console.log(`[SYNC] Dispatching ${instances.length} instances to client`);
+
     const syncMessage = {
         type: 'full_sync',
         timestamp: Date.now(),
-        instances: syncEngine.getAllInstances(),
+        instances: instances,
     };
     ws.send(JSON.stringify(syncMessage));
 
@@ -88,21 +133,22 @@ wss.on('connection', (ws: WebSocket) => {
     ws.on('message', (data: Buffer) => {
         try {
             const message: SyncMessage = JSON.parse(data.toString());
+            console.log(`[INBOUND] Received message: ${message.type}${'path' in message ? ' @ ' + message.path.join('.') : ''}`);
             handleEditorChange(message);
         } catch (error) {
-            console.error('❌ Invalid message from client:', error);
+            console.error('[ERROR] Malformed message received:', error);
         }
     });
 
-    // Handle disconnection
+    // Event listener for client termination
     ws.on('close', () => {
-        console.log('📡 VS Code client disconnected');
+        console.log('[WS] Client disconnected');
         clients.delete(ws);
     });
 
-    // Handle errors
+    // Event listener for connection errors
     ws.on('error', (error: Error) => {
-        console.error('❌ WebSocket error:', error.message);
+        console.error('[ERROR] WebSocket error:', error.message);
         clients.delete(ws);
     });
 });
@@ -121,13 +167,26 @@ function broadcastToClients(message: SyncMessage): void {
 }
 
 /**
- * Handle changes received from VS Code/Antigravity editor.
- * @param message - The sync message containing the change
+ * Process synchronization messages received from the VS Code/Antigravity editor.
+ * 
+ * @param message - The synchronization message to process.
  */
 function handleEditorChange(message: SyncMessage): void {
-    console.log(`📝 Editor change: ${message.type} at ${message.path.join('.')}`);
-    syncEngine.applyChange(message);
-    fileMapper.syncToFiles(message);
+    if (message.type === 'command') {
+        process.stdout.write(`[CMD] Execution signal received: ${message.action}\n`);
+        syncEngine.applyChange(message);
+    } else if (message.type === 'log') {
+        process.stdout.write(`[REMOTE_LOG] Editor broadcast: ${message.message}\n`);
+    } else if (message.type === 'delete') {
+        // Persistent file system synchronization before state removal
+        process.stdout.write(`[CHANGE] Editor deletion: ${message.path.join('.')}\n`);
+        fileMapper.syncToFiles(message);
+        syncEngine.applyChange(message);
+    } else {
+        process.stdout.write(`[CHANGE] Editor update: ${message.type} @ ${message.path.join('.')}\n`);
+        syncEngine.applyChange(message);
+        fileMapper.syncToFiles(message);
+    }
 }
 
 // =============================================================================
@@ -139,10 +198,12 @@ function handleEditorChange(message: SyncMessage): void {
  * Used by clients to verify server availability.
  */
 app.get('/health', (_req: Request, res: Response) => {
+    const instances = syncEngine.getAllInstances();
     const response: HealthResponse = {
         status: 'ok',
         timestamp: Date.now(),
         version: '1.0.0',
+        instanceCount: instances.length,  // Add instance count for plugin resync detection
     };
     res.json(response);
 });
@@ -161,23 +222,32 @@ app.post('/sync', (req: Request, res: Response) => {
         }
 
         // Process the sync and get detected changes
-        const changes = syncEngine.updateFromPlugin(instances);
+        // If it's an initial sync, we might want to reset state or trust it completely
+        const isInitial = req.body.isInitial === true;
 
-        // Notify VS Code clients about changes
-        changes.forEach(change => broadcastToClients(change));
-
-        // Also broadcast full sync for consistency
-        if (changes.length > 0) {
-            broadcastToClients({
-                type: 'full_sync',
-                timestamp: Date.now(),
-                path: [],
-                instances: syncEngine.getAllInstances(),
-            });
+        let changes: SyncMessage[];
+        if (isInitial) {
+            // Initial synchronization: Synchronize full state from plugin
+            changes = syncEngine.updateFromPlugin(instances);
+            console.log(`[SYNC] Initial synchronization: ${instances.length} root instances received`);
+        } else {
+            changes = syncEngine.updateFromPlugin(instances);
         }
 
-        // Write to file system
+        // Temporarily pause watcher to prevent sync loops
+        watcher.pauseTemporarily(2000);
+
+        // Write to file system FIRST
         fileMapper.syncAllToFiles(instances);
+
+        // Then notify VS Code clients about the updated state
+        // Only send full_sync to avoid duplicates from individual changes
+        broadcastToClients({
+            type: 'full_sync',
+            timestamp: Date.now(),
+            path: [],
+            instances: syncEngine.getAllInstances(),
+        } as SyncMessage);
 
         const response: SyncResponse = {
             success: true,
@@ -185,7 +255,42 @@ app.post('/sync', (req: Request, res: Response) => {
         };
         res.json(response);
     } catch (error) {
-        console.error('❌ Sync error:', error);
+        console.error('[ERROR] Synchronization failure:', error);
+        res.status(500).json({
+            success: false,
+            changesApplied: 0,
+            error: String(error),
+        });
+    }
+});
+
+/**
+ * Delta Sync endpoint - receives batched changes from Roblox plugin.
+ */
+app.post('/sync/delta', (req: Request, res: Response) => {
+    try {
+        const changes: SyncMessage[] = req.body.changes;
+
+        if (!Array.isArray(changes)) {
+            res.status(400).json({ error: 'Invalid request: changes must be an array' });
+            return;
+        }
+
+        // Apply changes to server state
+        syncEngine.applyDeltaChanges(changes);
+
+        // Notify VS Code clients
+        changes.forEach(change => broadcastToClients(change));
+
+        // Write to file system
+        changes.forEach(change => fileMapper.syncToFiles(change));
+
+        res.json({
+            success: true,
+            changesApplied: changes.length,
+        });
+    } catch (error) {
+        console.error('[ERROR] Delta synchronization failure:', error);
         res.status(500).json({
             success: false,
             changesApplied: 0,
@@ -200,6 +305,9 @@ app.post('/sync', (req: Request, res: Response) => {
  */
 app.get('/changes', (_req: Request, res: Response) => {
     const changes = syncEngine.getPendingChangesForPlugin();
+    if (changes.length > 0) {
+        console.log(`[OUTBOUND] Dispatching ${changes.length} pending changes to plugin`);
+    }
     res.json({ changes });
 });
 
@@ -303,15 +411,85 @@ app.patch('/instance/:path', (req: Request, res: Response) => {
     res.json({ success: true });
 });
 
+/**
+ * Build the project to a file.
+ */
+app.post('/build/:format', async (req: Request, res: Response) => {
+    const format = req.params.format;
+
+    if (format !== 'rbxlx') {
+        res.status(400).json({ error: 'Unsupported format. Currently only rbxlx is supported.' });
+        return;
+    }
+
+    try {
+        const instances = syncEngine.getAllInstances();
+        const outputPath = await buildSystem.buildRbxlx(instances);
+
+        console.log(`[BUILD] Project successfully built to: ${outputPath}`);
+        res.json({ success: true, path: outputPath });
+    } catch (error) {
+        console.error('[ERROR] Build failure:', error);
+        res.status(500).json({ error: String(error) });
+    }
+});
+
+/**
+ * Export a specific instance to .rbxmx.
+ */
+app.post('/build/rbxmx', async (req: Request, res: Response) => {
+    const { path: instancePath } = req.body;
+
+    if (!instancePath || !Array.isArray(instancePath)) {
+        res.status(400).json({ error: 'Missing required field: path (array of strings)' });
+        return;
+    }
+
+    try {
+        const instance = syncEngine.getInstance(instancePath);
+        if (!instance) {
+            res.status(404).json({ error: 'Instance not found' });
+            return;
+        }
+
+        const outputPath = await buildSystem.buildRbxmx(instance);
+
+        console.log(`[EXPORT] Exported ${instance.name} to: ${outputPath}`);
+        res.json({ success: true, path: outputPath });
+    } catch (error) {
+        console.error('[ERROR] Export failure:', error);
+        res.status(500).json({ error: String(error) });
+    }
+});
+
+/**
+ * Regenerate sourcemap command.
+ */
+app.post('/sourcemap/regenerate', async (req: Request, res: Response) => {
+    if (!projectConfig) {
+        res.status(400).json({ error: 'No project configuration loaded' });
+        return;
+    }
+
+    try {
+        await sourcemapGenerator.generate(projectConfig);
+        console.log('[LSP] sourcemap.json regenerated successfully');
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[ERROR] Sourcemap generation failure:', error);
+        res.status(500).json({ error: String(error) });
+    }
+});
+
 // =============================================================================
 // Error Handling
 // =============================================================================
 
 /**
- * Global error handler.
+ * Global application error handler.
  */
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    console.error('❌ Unhandled error:', err);
+    console.error('[CRITICAL] Unhandled application error:', err);
     res.status(500).json({ error: 'Internal server error' });
 });
 
@@ -335,11 +513,11 @@ server.listen(config.port, config.host, () => {
 `);
 });
 
-// Graceful shutdown
+// Signal handling for graceful termination
 process.on('SIGTERM', () => {
-    console.log('🛑 Shutting down gracefully...');
+    console.log('[SYSTEM] SIGTERM received. Initiating graceful shutdown...');
     server.close(() => {
-        console.log('✅ Server closed');
+        console.log('[SYSTEM] All services terminated.');
         process.exit(0);
     });
 });

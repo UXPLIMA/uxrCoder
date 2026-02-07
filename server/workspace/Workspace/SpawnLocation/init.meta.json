@@ -1,0 +1,28 @@
+{
+  "className": "SpawnLocation",
+  "properties": {
+    "CanCollide": true,
+    "Color": {
+      "b": 0.6470588445663452,
+      "type": "Color3",
+      "g": 0.6352941393852234,
+      "r": 0.6392157077789307
+    },
+    "Anchored": true,
+    "Transparency": 0,
+    "Name": "SpawnLocation",
+    "Position": {
+      "y": 0.5,
+      "type": "Vector3",
+      "x": 0,
+      "z": 0
+    },
+    "Material": "Plastic",
+    "Size": {
+      "y": 1,
+      "type": "Vector3",
+      "x": 12,
+      "z": 12
+    }
+  }
+}

@@ -67,6 +67,12 @@
                     "name": "Properties",
                     "type": "webview",
                     "icon": "$(symbol-property)"
+                },
+                {
+                    "id": "robloxClassBrowser",
+                    "name": "Class Browser",
+                    "type": "webview",
+                    "icon": "$(book)"
                 }
             ]
         },
@@ -118,6 +124,90 @@
                 "title": "Open Script",
                 "category": "uxrCoder",
                 "icon": "$(file-code)"
+            },
+            {
+                "command": "robloxSync.play",
+                "title": "Play",
+                "category": "uxrCoder",
+                "icon": "$(play)"
+            },
+            {
+                "command": "robloxSync.run",
+                "title": "Run",
+                "category": "uxrCoder",
+                "icon": "$(run)"
+            },
+            {
+                "command": "robloxSync.stop",
+                "title": "Stop",
+                "category": "uxrCoder",
+                "icon": "$(stop)"
+            },
+            {
+                "command": "robloxSync.build",
+                "title": "Build Project to .rbxlx",
+                "category": "uxrCoder",
+                "icon": "$(package)"
+            },
+            {
+                "command": "robloxSync.exportModel",
+                "title": "Export to .rbxmx",
+                "category": "uxrCoder",
+                "icon": "$(export)"
+            },
+            {
+                "command": "robloxSync.regenerateSourcemap",
+                "title": "Regenerate Sourcemap",
+                "category": "uxrCoder",
+                "icon": "$(refresh)"
+            },
+            {
+                "command": "robloxSync.wallyInit",
+                "title": "Wally: Initialize",
+                "category": "uxrCoder",
+                "icon": "$(file-add)"
+            },
+            {
+                "command": "robloxSync.wallyInstall",
+                "title": "Wally: Install Packages",
+                "category": "uxrCoder",
+                "icon": "$(cloud-download)"
+            },
+            {
+                "command": "robloxSync.seleneInit",
+                "title": "Selene: Initialize",
+                "category": "uxrCoder",
+                "icon": "$(file-code)"
+            },
+            {
+                "command": "robloxSync.seleneLint",
+                "title": "Selene: Lint Project",
+                "category": "uxrCoder",
+                "icon": "$(beaker)"
+            },
+            {
+                "command": "robloxSync.styluaInit",
+                "title": "StyLua: Initialize",
+                "category": "uxrCoder",
+                "icon": "$(settings)"
+            },
+            {
+                "command": "robloxSync.styluaFormat",
+                "title": "StyLua: Format Project",
+                "category": "uxrCoder",
+                "icon": "$(paintcan)"
+            },
+            {
+                "command": "robloxSync.generateGitignore",
+                "title": "Git: Generate .gitignore",
+                "category": "uxrCoder",
+                "icon": "$(git-merge)"
+            },
+            {
+                "command": "robloxSync.initProject",
+                "title": "Project: Initialize",
+                "category": "uxrCoder",
+                "icon": "$(rocket)"
             }
         ],
         "menus": {
@@ -128,9 +218,24 @@
                     "group": "navigation@1"
                 },
                 {
+                    "command": "robloxSync.play",
+                    "when": "view == robloxExplorer && robloxSync.isConnected",
+                    "group": "navigation@2"
+                },
+                {
+                    "command": "robloxSync.stop",
+                    "when": "view == robloxExplorer && robloxSync.isConnected",
+                    "group": "navigation@3"
+                },
+                {
                     "command": "robloxSync.refresh",
                     "when": "view == robloxExplorer",
-                    "group": "navigation@2"
+                    "group": "navigation@4"
+                },
+                {
+                    "command": "robloxSync.build",
+                    "when": "view == robloxExplorer",
+                    "group": "navigation@5"
                 }
             ],
             "view/item/context": [
@@ -158,6 +263,18 @@
                     "command": "robloxSync.openScript",
                     "when": "view == robloxExplorer && viewItem == script",
                     "group": "0_open@1"
+                },
+                {
+                    "command": "robloxSync.exportModel",
+                    "when": "view == robloxExplorer",
+                    "group": "modification@4"
+                }
+            ],
+            "explorer/context": [
+                {
+                    "command": "robloxSync.wallyInstall",
+                    "when": "resourceFilename == wally.toml",
+                    "group": "uxrCoder"
                 }
             ]
         }

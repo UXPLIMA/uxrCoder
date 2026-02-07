@@ -1,0 +1,20 @@
+{
+  "className": "Frame",
+  "properties": {
+    "Name": "Frame",
+    "Position": {
+      "yScale": 0,
+      "type": "UDim2",
+      "xOffset": 0,
+      "xScale": 0,
+      "yOffset": 0
+    },
+    "Size": {
+      "yScale": 0,
+      "type": "UDim2",
+      "xOffset": 100,
+      "xScale": 0,
+      "yOffset": 100
+    }
+  }
+}

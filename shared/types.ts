@@ -156,6 +156,7 @@ export interface HealthResponse {
     status: 'ok' | 'error';
     timestamp: number;
     version?: string;
+    instanceCount?: number;
 }
 
 /**

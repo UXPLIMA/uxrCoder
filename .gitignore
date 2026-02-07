@@ -1,54 +1,26 @@
+# Build and output
+**/dist
+**/out
+**/build
+**/bin
+**/*.exe
+**/*.dll
+
 # Dependencies
 node_modules/
-.pnp
-.pnp.js
+package-lock.json
 
-# Build outputs
-dist/
-out/
-build/
-*.vsix
-
-# IDE
-.idea/
-*.swp
-*.swo
-.vscode/*
-!.vscode/extensions.json
-!.vscode/launch.json
-!.vscode/tasks.json
-
-# OS
+# IDE and System
+.vscode/
 .DS_Store
-Thumbs.db
-
-# Environment
-.env
-.env.local
-.env.*.local
-
-# Logs
-logs/
+*.swp
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
-# Testing
-coverage/
-.nyc_output/
+# Project specific
+vscode-extension/*.vsix
+uxrcoder.project.json
+robloxsourcemap.json
 
-# Roblox
-*.rbxm
-*.rbxmx
-*.rbxl
-*.rbxlx
-
-# Workspace sync directory
-workspace/
-.roblox-sync/
-
-# Temporary files
-*.tmp
-*.temp
-.cache/
+# Local artifacts
+.gemini/
+brain/

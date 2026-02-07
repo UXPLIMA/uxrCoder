@@ -5,45 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Added
-- Initial release of uxrCoder
-- Two-way synchronization between Roblox Studio and VS Code
-- Real-time DataModel tree view in VS Code
-- Script editing with syntax highlighting
-- Property inspector panel
-- Context menu actions (Insert, Delete, Rename, Copy Path)
-- WebSocket-based real-time updates
-- HTTP REST API for Roblox plugin communication
-
-### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
-
-### Security
-- N/A
-
 ## [1.0.0] - 2026-02-07
 
 ### Added
-- Core synchronization engine
-- Roblox Studio plugin with HttpService communication
-- VS Code extension with tree view provider
-- Node.js sync server with Express and WebSocket
-- Full DataModel serialization
-- Script content provider for virtual documents
-- Property editing support
+- [CORE] Neural Sync Engine for sub-50ms latency.
+- [EXPLORER] Full Roblox DataModel Explorer in VS Code.
+- [PROPS] Multi-instance property inspector.
+- [FS] Bi-directional file system mapping for .lua files.
+- [LSP] Built-in sourcemap.json generation for Luau LSP support.
+- [BUILD] rbxlx and rbxmx export capabilities.
 
----
+### Changed
+- [DEV] Transitioned from read-only virtual documents to direct workspace file editing.
+- [UX] Unified context menu for common studio operations.
+- [INFRA] Standardized request logging and service lifecycle management.
 
-[Unreleased]: https://github.com/UXPLIMA/uxrCoder/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/UXPLIMA/uxrCoder/releases/tag/v1.0.0
+### Fixed
+- [SYNC] Resolved initial synchronization timing issues where explorer appeared empty.
+- [DEDUP] Implemented path-based collision resolution for duplicate instances.
+- [PLUGIN] Added heartbeat-based server restart detection and automatic restoration.
+- [FS] Corrected path navigation for create operations targeting nested instances.
+
+### Professionalization
+- [DOC] Removed all emojis from codebase and documentation.
+- [LOG] Standardized terminal output and log tags ([INFO], [WS], [SYNC], etc.).
+- [COMMENT] Implemented JSDoc/LDoc standards across the entire repository.

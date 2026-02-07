@@ -10,21 +10,11 @@
  * @license MIT
  */
 
-import type { RobloxInstance, SyncMessage, PropertyValue, PendingChange } from './types';
+import type { RobloxInstance, SyncMessage, PropertyValue, PendingChange, CommandMessage, LogMessage } from './types';
+import { randomUUID } from 'crypto';
 
 /**
  * Core synchronization engine that manages state between Roblox Studio and editors.
- *
- * The SyncEngine maintains two representations of the DataModel:
- * 1. A flat Map for efficient lookups by path
- * 2. A tree structure for hierarchical display
- *
- * @example
- * ```typescript
- * const engine = new SyncEngine();
- * const changes = engine.updateFromPlugin(instances);
- * const allInstances = engine.getAllInstances();
- * ```
  */
 export class SyncEngine {
     /** Flat map of instances by path string (e.g., "Workspace.Model.Part") */
@@ -45,12 +35,6 @@ export class SyncEngine {
 
     /**
      * Update internal state from Roblox plugin's DataModel snapshot.
-     *
-     * This method compares the incoming state with the current state and
-     * returns a list of detected changes (creates, updates, deletes).
-     *
-     * @param pluginInstances - Array of root instances from the plugin
-     * @returns Array of detected changes
      */
     updateFromPlugin(pluginInstances: RobloxInstance[]): SyncMessage[] {
         const changes: SyncMessage[] = [];
@@ -99,10 +83,19 @@ export class SyncEngine {
     }
 
     /**
-     * Get changes waiting to be applied by the Roblox plugin.
-     * These are changes made in the editor that need to sync to Studio.
+     * Apply a batch of delta changes from the plugin.
      *
-     * @returns Array of unconfirmed pending changes
+     * @param changes - Array of changes to apply
+     */
+    applyDeltaChanges(changes: SyncMessage[]): void {
+        for (const change of changes) {
+            this.applyChangeInternal(change);
+        }
+        this.lastSyncTimestamp = Date.now();
+    }
+
+    /**
+     * Get changes waiting to be applied by the Roblox plugin.
      */
     getPendingChangesForPlugin(): PendingChange[] {
         return this.pendingChanges.filter(c => !c.confirmed);
@@ -110,8 +103,6 @@ export class SyncEngine {
 
     /**
      * Mark changes as confirmed (successfully applied by plugin).
-     *
-     * @param ids - Array of change IDs to confirm
      */
     confirmChanges(ids: string[]): void {
         const idSet = new Set(ids);
@@ -122,7 +113,7 @@ export class SyncEngine {
             }
         }
 
-        // Clean up old confirmed changes (keep for 60 seconds for debugging)
+        // Evict confirmed changes after a stabilization period (60 seconds)
         const cutoff = Date.now() - 60000;
         this.pendingChanges = this.pendingChanges.filter(
             c => !c.confirmed || c.timestamp > cutoff
@@ -135,44 +126,14 @@ export class SyncEngine {
 
     /**
      * Apply a change from VS Code/Antigravity editor.
-     *
-     * @param message - The sync message containing the change
      */
     applyChange(message: SyncMessage): void {
-        const pathKey = message.path.join('.');
-
-        switch (message.type) {
-            case 'create':
-                if (message.instance) {
-                    this.instances.set(pathKey, message.instance);
-                    this.addPendingChange(message);
-                }
-                break;
-
-            case 'update':
-                const inst = this.instances.get(pathKey);
-                if (inst && message.property) {
-                    inst.properties[message.property.name] = message.property.value;
-                    this.addPendingChange(message);
-                }
-                break;
-
-            case 'delete':
-                // Remove instance and all children
-                const keysToDelete = Array.from(this.instances.keys()).filter(
-                    key => key === pathKey || key.startsWith(pathKey + '.')
-                );
-                keysToDelete.forEach(key => this.instances.delete(key));
-                this.addPendingChange(message);
-                break;
-        }
+        this.applyChangeInternal(message);
+        this.addPendingChange(message);
     }
 
     /**
      * Get instance by path.
-     *
-     * @param path - Array of instance names forming the path
-     * @returns The instance if found, undefined otherwise
      */
     getInstance(path: string[]): RobloxInstance | undefined {
         return this.instances.get(path.join('.'));
@@ -180,9 +141,6 @@ export class SyncEngine {
 
     /**
      * Get all instances as a tree structure.
-     * Used by VS Code extension for tree view display.
-     *
-     * @returns Array of root instances with children
      */
     getAllInstances(): RobloxInstance[] {
         return this.treeInstances;
@@ -190,8 +148,6 @@ export class SyncEngine {
 
     /**
      * Get the timestamp of the last successful sync.
-     *
-     * @returns Unix timestamp in milliseconds
      */
     getLastSyncTimestamp(): number {
         return this.lastSyncTimestamp;
@@ -202,11 +158,144 @@ export class SyncEngine {
     // =========================================================================
 
     /**
+     * Internal method to apply a single change to the state.
+     */
+    private applyChangeInternal(change: SyncMessage): void {
+        if (change.type === 'command' || change.type === 'log') {
+            return;
+        }
+
+        const pathKey = change.path.join('.');
+
+        switch (change.type) {
+            case 'create':
+                // Narrowing: TypeScript knows 'create' has 'instance'
+                if (change.type === 'create' && change.instance) {
+                    this.instances.set(pathKey, change.instance);
+                    // Also update tree structure
+                    this.addToTree(change.path, change.instance);
+                }
+                break;
+
+            case 'update':
+                const inst = this.instances.get(pathKey);
+                if (inst && change.type === 'update' && change.property) {
+                    inst.properties[change.property.name] = change.property.value;
+                    // Tree update is implicit via object reference
+                }
+                break;
+
+            case 'delete':
+                // Remove instance and all children from map
+                const keysToDelete = Array.from(this.instances.keys()).filter(
+                    key => key === pathKey || key.startsWith(pathKey + '.')
+                );
+                keysToDelete.forEach(key => this.instances.delete(key));
+
+                // Remove from tree
+                this.removeFromTree(change.path);
+                break;
+        }
+    }
+
+    /**
+     * Add an instance to the hierarchical tree structure.
+     * Checks for existing instances by ID to handle duplicates properly.
+     * Automatically renames instances with duplicate names to avoid path collisions.
+     */
+    private addToTree(path: string[], instance: RobloxInstance): void {
+        const instanceName = path[path.length - 1];
+
+        if (path.length === 1) {
+            // Root level (Service) - check by ID not name
+            const existingIndex = this.treeInstances.findIndex(i => i.id === instance.id);
+            if (existingIndex >= 0) {
+                // Update existing instance
+                this.treeInstances[existingIndex] = instance;
+            } else {
+                // Check if same name exists - make it unique
+                let uniqueName = instanceName;
+                let counter = 2;
+
+                while (this.treeInstances.some(i => i.name === uniqueName)) {
+                    uniqueName = `${instanceName}_${counter}`;
+                    counter++;
+                }
+
+                if (uniqueName !== instanceName) {
+                    console.log(`🔄 Auto-renamed "${instanceName}" to "${uniqueName}" at root to avoid path collision`);
+                    instance.name = uniqueName;
+                    // Update the path in the flat map too
+                    const oldPathKey = path.join('.');
+                    const newPath = [...path.slice(0, -1), uniqueName];
+                    const newPathKey = newPath.join('.');
+                    this.instances.delete(oldPathKey);
+                    this.instances.set(newPathKey, instance);
+                }
+
+                this.treeInstances.push(instance);
+            }
+            return;
+        }
+
+        const parentPath = path.slice(0, -1);
+        const parent = this.instances.get(parentPath.join('.'));
+
+        if (parent) {
+            if (!parent.children) parent.children = [];
+
+            // Check if child already exists by ID
+            const existingIndex = parent.children.findIndex(c => c.id === instance.id);
+            if (existingIndex >= 0) {
+                // Update existing child
+                parent.children[existingIndex] = instance;
+            } else {
+                // Check if same name exists - make it unique
+                let uniqueName = instanceName;
+                let counter = 2;
+
+                while (parent.children.some(c => c.name === uniqueName)) {
+                    uniqueName = `${instanceName}_${counter}`;
+                    counter++;
+                }
+
+                if (uniqueName !== instanceName) {
+                    console.log(`🔄 Auto-renamed "${path.join('.')}" to "${[...parentPath, uniqueName].join('.')}" to avoid path collision`);
+                    instance.name = uniqueName;
+                    // Update the path in the flat map too
+                    const oldPathKey = path.join('.');
+                    const newPath = [...parentPath, uniqueName];
+                    const newPathKey = newPath.join('.');
+                    this.instances.delete(oldPathKey);
+                    this.instances.set(newPathKey, instance);
+                }
+
+                parent.children.push(instance);
+            }
+        }
+    }
+
+    /**
+     * Remove an instance from the hierarchical tree structure.
+     */
+    private removeFromTree(path: string[]): void {
+        if (path.length === 1) {
+            this.treeInstances = this.treeInstances.filter(i => i.name !== path[0]);
+            return;
+        }
+
+        const parentPath = path.slice(0, -1);
+        const parent = this.instances.get(parentPath.join('.'));
+        const targetName = path[path.length - 1];
+
+        if (parent && parent.children) {
+            parent.children = parent.children.filter(c => c.name !== targetName);
+        }
+    }
+
+    /**
      * Flatten a tree of instances into a Map for efficient lookups.
-     *
-     * @param instances - Array of instances to flatten
-     * @param parentPath - Current path prefix
-     * @param output - Map to populate with flattened instances
+     * Handles duplicate names by auto-renaming to prevent path collisions.
      */
     private flattenInstances(
         instances: RobloxInstance[],
@@ -216,6 +305,35 @@ export class SyncEngine {
         for (const inst of instances) {
             const path = [...parentPath, inst.name];
             const pathKey = path.join('.');
+
+            // Check for duplicate path
+            if (output.has(pathKey)) {
+                const existing = output.get(pathKey);
+                if (existing && existing.id !== inst.id) {
+                    // Different instance with same name - rename the new one
+                    let uniqueName = inst.name;
+                    let counter = 2;
+                    let uniquePath = [...parentPath, uniqueName];
+                    let uniquePathKey = uniquePath.join('.');
+
+                    while (output.has(uniquePathKey)) {
+                        uniqueName = `${inst.name}_${counter}`;
+                        uniquePath = [...parentPath, uniqueName];
+                        uniquePathKey = uniquePath.join('.');
+                        counter++;
+                    }
+
+                    process.stdout.write(`[RESOLVE] Auto-renamed collision: ${pathKey} -> ${uniquePathKey}\n`);
+                    inst.name = uniqueName;
+                    output.set(uniquePathKey, inst);
+
+                    if (inst.children && inst.children.length > 0) {
+                        this.flattenInstances(inst.children, uniquePath, output);
+                    }
+                    continue;
+                }
+            }
+
             output.set(pathKey, inst);
 
             if (inst.children && inst.children.length > 0) {
@@ -226,11 +344,6 @@ export class SyncEngine {
 
     /**
      * Detect property changes between two instances.
-     *
-     * @param oldInst - Previous instance state
-     * @param newInst - Current instance state
-     * @param path - Path to the instance
-     * @returns Array of update messages for changed properties
      */
     private detectPropertyChanges(
         oldInst: RobloxInstance,
@@ -269,11 +382,6 @@ export class SyncEngine {
 
     /**
      * Compare two property values for equality.
-     * Handles complex types like Vector3, Color3, etc.
-     *
-     * @param a - First value
-     * @param b - Second value
-     * @returns True if values are equal
      */
     private valuesEqual(a: PropertyValue | undefined, b: PropertyValue | undefined): boolean {
         if (a === b) return true;
@@ -289,13 +397,40 @@ export class SyncEngine {
 
     /**
      * Add a change to the pending queue for the plugin.
-     *
-     * @param message - The sync message to queue
+     * Deduplicates based on path and type within a short time window.
      */
     private addPendingChange(message: SyncMessage): void {
+        // Skip if this is a command or log message (no path)
+        if (message.type === 'command' || message.type === 'log') {
+            this.pendingChanges.push({
+                ...message,
+                id: randomUUID(),
+                confirmed: false,
+            });
+            return;
+        }
+
+        const pathKey = message.path.join('.');
+        const now = Date.now();
+        const DEDUP_WINDOW_MS = 1000; // 1 second deduplication window
+
+        // Check for duplicate within the time window
+        const isDuplicate = this.pendingChanges.some(
+            c => !c.confirmed &&
+                'path' in c &&
+                c.path.join('.') === pathKey &&
+                c.type === message.type &&
+                now - c.timestamp < DEDUP_WINDOW_MS
+        );
+
+        if (isDuplicate) {
+            process.stdout.write(`[SYNC] Suppressing redundant pending change: ${message.type}:${pathKey}\n`);
+            return;
+        }
+
         this.pendingChanges.push({
             ...message,
-            id: crypto.randomUUID(),
+            id: randomUUID(),
             confirmed: false,
         });
     }
