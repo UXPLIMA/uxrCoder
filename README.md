@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/UXPLIMA/uxrCoder/main/vscode-extension/resources/roblox-logo.svg" width="128" height="128" alt="uxrCoder Logo">
-</p>
-
 <h1 align="center">uxrCoder</h1>
 
 <p align="center">
@@ -27,94 +23,33 @@ Designed by [UXPLIMA](https://uxplima.com), uxrCoder is engineered for low laten
 
 ---
 
-## Enterprise-Grade Features
+## Core Features
 
-### [SYNC] High-Fidelity Two-Way Synchronization
-- **Neural Sync Engine**: Real-time mirroring with sub-50ms latency.
-- **Bi-Directional Flow**: Change anything in Studio, see it in VS Code. Save in VS Code, see it in Studio.
-- **Intelligent Conflict Resolution**: State-aware deduplication prevents data loss during concurrent edits.
+- **High-Fidelity Two-Way Synchronization**: Real-time mirroring with sub-50ms latency.
+- **Advanced File Projection**: Intelligent mapping of Roblox instances to the physical file system.
+- **Roblox DataModel Explorer**: Native tree view integrated directly into the VS Code Activity Bar.
+- **World-Class Scripting Experience**: Edit code using your favorite IDE features with full Luau LSP support.
+- **Integrated Property Inspector**: Live property editing without leaving VS Code.
 
-### [FS] Advanced File Projection
-- **Native Extension Mapping**: 
-  - `Script` ➔ `.server.lua`
-  - `LocalScript` ➔ `.client.lua`
-  - `ModuleScript` ➔ `.lua`
-- **Smart Hierarchy Management**: Handles complex nested structures while enforcing Roblox's engine constraints (e.g., Script children validation).
-
-### [EXPLORER] Roblox DataModel Explorer
-- **Native Tree View**: Integrated directly into the VS Code Activity Bar.
-- **Context-Aware Actions**: Right-click to Insert, Rename, Delete, or Copy Path.
-- **Live State Updates**: Real-time visual feedback of the Studio DataModel.
-
-### [EDIT] World-Class Scripting Experience
-- **Workspace-Based Editing**: Scripts open as actual files, enabling 100% compatibility with **Luau LSP**, **sourcemap.json**, and **GitHub Copilot/Cursor**.
-- **Cross-Platform Compatibility**: Edit code using your favorite IDE features, then let uxrCoder handle the injection back into Studio.
-
-### [PROPS] Integrated Property Inspector
-- **Live Property Editing**: Modify positions, colors, and boolean values without leaving VS Code.
-- **Rich Data Types**: Built-in support for `Vector3`, `Color3`, `UDim2`, `CFrame`, and more.
+[Learn more about the technical details in our Architecture Guide.](docs/ARCHITECTURE.md)
 
 ---
 
-## Technical Architecture
+## Documentation (Wiki)
 
-uxrCoder utilizes a robust hub-and-spoke architecture centered around a high-performance Node.js relay server.
+Explore our comprehensive guides for setup, configuration, and advanced usage:
 
-```mermaid
-graph TD
-    subgraph "Roblox Studio"
-        P[plugin/RobloxSyncPlugin.lua]
-    end
-
-    subgraph "uxrCoder Server"
-        S[server/src/server.ts]
-        SE[syncEngine.ts]
-        FM[fileMapper.ts]
-        W[watcher.ts]
-        S --- SE
-        SE --- FM
-        FM --- W
-    end
-
-    subgraph "Editor (VS Code / Antigravity)"
-        V[vscode-extension/extension.ts]
-        TV[treeView.ts]
-        PE[propertyEditor.ts]
-        SC[syncClient.ts]
-        V --- TV
-        V --- PE
-        V --- SC
-    end
-
-    P <-- "REST Polling (100ms)" --> S
-    S <-- "WebSocket (Real-time)" --> SC
-```
+- [**Installation & Setup**](docs/INSTALLATION.md): Quick start guide to get running in minutes.
+- [**Technical Architecture**](docs/ARCHITECTURE.md): In-depth look at the hub-and-spoke system.
+- [**Configuration Reference**](docs/CONFIGURATION.md): Master the `uxrcoder.project.json` mapping.
+- [**Usage & Workflows**](docs/USAGE.md): Pro-tips and common development patterns.
 
 ---
 
-## Repository Structure
+## Quick Start
 
-| Directory | Purpose |
-|:--- |:--- |
-| [`server/`](./server) | The core Node.js hub managing state, file watching, and API endpoints. |
-| [`vscode-extension/`](./vscode-extension) | The VS Code front-end providing the UI, Tree View, and WebSocket client. |
-| [`plugin/`](./plugin) | The Roblox Studio bridge responsible for DataModel injection and extraction. |
-| [`shared/`](./shared) | Universal Type Definitions sharing data structures across the ecosystem. |
-
----
-
-## Installation & Setup
-
-### Prerequisites
-- [Node.js](https://nodejs.org/) 18.x or later
-- [Roblox Studio](https://www.roblox.com/create)
-- [Visual Studio Code](https://code.visualstudio.com/)
-
-### Quick Start (Manual Setup)
-1. **Clone & Install Dependencies**
+1. **Install Dependencies**
    ```bash
-   git clone https://github.com/UXPLIMA/uxrCoder.git
-   cd uxrCoder
    npm run setup
    ```
 2. **Start the Sync Hub**
@@ -124,66 +59,19 @@ graph TD
 3. **Install the Plugin**
    - Copy `plugin/RobloxSyncPlugin.lua` to your Roblox Local Plugins folder.
 4. **Launch VS Code Extension**
-   - Open the project in VS Code and press `F5` to start the extension.
-
----
-
-## Usage Patterns
-
-| Action | Visual Studio Code | Roblox Studio |
-| :--- | :--- | :--- |
-| **Open Script** | Double-click in Explorer | Double-click in Explorer |
-| **New Instance** | Right-click ➔ Insert Object | Insert via Advanced Objects |
-| **Edit Data** | Modify in Property Panel | Modify in Properties Window |
-| **Sync Check** | Status Bar Indicator | Plugin Status Button |
-
-### Pro-Tips
-- **AI Coding**: Use Antigravity/Cursor on the mapped `.lua` files for superior results compared to the built-in Studio editor.
-- **Server Restart**: uxrCoder features **Auto-Resync**. If you restart the server, the plugin detects it and automatically restores the state.
-
----
-
-## Configuration
-
-### Workspace Mapping (`uxrcoder.project.json`)
-```json
-{
-  "name": "ProjectAlpha",
-  "tree": {
-    "$className": "DataModel",
-    "ReplicatedStorage": {
-      "$path": "src/shared"
-    }
-  }
-}
-```
-
----
-
-## Development Roadmap
-
-- [PHASE 6] Drag & Drop support in Tree View.
-- [PHASE 7] Built-in Asset Preview for Decals/Sounds.
-- [PHASE 8] Team Create cloud-relay support.
-- [PHASE 9] Advanced conflict resolution UI.
+   - Press `F5` in VS Code to start the extension development host.
 
 ---
 
 ## Contributing
 
-We welcome contributions from the community!
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git checkout -b feature/AmazingFeature`)
-5. Open a Pull Request
+We welcome contributions from the community! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
 ---
 
 ## License
 
-Distributed under the MIT License. See [`LICENSE`](./LICENSE) for more information.
+Distributed under the MIT License. See [LICENSE](LICENSE) for more information.
 
 ---
 
