@@ -1,0 +1,13 @@
+{
+    "name": "@uxrcoder/shared",
+    "version": "1.0.0",
+    "description": "Shared type definitions for uxrCoder",
+    "main": "types.ts",
+    "types": "types.ts",
+    "scripts": {
+        "typecheck": "tsc --noEmit"
+    },
+    "devDependencies": {
+        "typescript": "^5.3.3"
+    }
+}

@@ -1,0 +1,188 @@
+{
+    "name": "uxrcoder",
+    "displayName": "uxrCoder",
+    "description": "Real-time synchronization between Roblox Studio and VS Code",
+    "version": "1.0.0",
+    "publisher": "UXPLIMA",
+    "license": "MIT",
+    "icon": "images/icon.png",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/UXPLIMA/uxrCoder"
+    },
+    "engines": {
+        "vscode": "^1.85.0"
+    },
+    "categories": [
+        "Other",
+        "Programming Languages"
+    ],
+    "keywords": [
+        "roblox",
+        "roblox-studio",
+        "luau",
+        "lua",
+        "sync",
+        "game-development"
+    ],
+    "activationEvents": [
+        "onStartupFinished"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+        "configuration": {
+            "title": "uxrCoder",
+            "properties": {
+                "robloxSync.serverUrl": {
+                    "type": "string",
+                    "default": "ws://127.0.0.1:34872",
+                    "description": "WebSocket URL of the uxrCoder server"
+                },
+                "robloxSync.autoConnect": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Automatically connect to the sync server on startup"
+                }
+            }
+        },
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "robloxSync",
+                    "title": "Roblox",
+                    "icon": "$(symbol-misc)"
+                }
+            ]
+        },
+        "views": {
+            "robloxSync": [
+                {
+                    "id": "robloxExplorer",
+                    "name": "Explorer",
+                    "icon": "$(list-tree)",
+                    "contextualTitle": "Roblox Explorer"
+                },
+                {
+                    "id": "robloxProperties",
+                    "name": "Properties",
+                    "type": "webview",
+                    "icon": "$(symbol-property)"
+                }
+            ]
+        },
+        "commands": [
+            {
+                "command": "robloxSync.connect",
+                "title": "Connect to Server",
+                "category": "uxrCoder",
+                "icon": "$(plug)"
+            },
+            {
+                "command": "robloxSync.disconnect",
+                "title": "Disconnect from Server",
+                "category": "uxrCoder",
+                "icon": "$(debug-disconnect)"
+            },
+            {
+                "command": "robloxSync.refresh",
+                "title": "Refresh Explorer",
+                "category": "uxrCoder",
+                "icon": "$(refresh)"
+            },
+            {
+                "command": "robloxSync.insertObject",
+                "title": "Insert Object",
+                "category": "uxrCoder",
+                "icon": "$(add)"
+            },
+            {
+                "command": "robloxSync.delete",
+                "title": "Delete",
+                "category": "uxrCoder",
+                "icon": "$(trash)"
+            },
+            {
+                "command": "robloxSync.rename",
+                "title": "Rename",
+                "category": "uxrCoder",
+                "icon": "$(edit)"
+            },
+            {
+                "command": "robloxSync.copyPath",
+                "title": "Copy Path",
+                "category": "uxrCoder",
+                "icon": "$(clippy)"
+            },
+            {
+                "command": "robloxSync.openScript",
+                "title": "Open Script",
+                "category": "uxrCoder",
+                "icon": "$(file-code)"
+            }
+        ],
+        "menus": {
+            "view/title": [
+                {
+                    "command": "robloxSync.connect",
+                    "when": "view == robloxExplorer",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "robloxSync.refresh",
+                    "when": "view == robloxExplorer",
+                    "group": "navigation@2"
+                }
+            ],
+            "view/item/context": [
+                {
+                    "command": "robloxSync.insertObject",
+                    "when": "view == robloxExplorer",
+                    "group": "1_modification@1"
+                },
+                {
+                    "command": "robloxSync.rename",
+                    "when": "view == robloxExplorer",
+                    "group": "1_modification@2"
+                },
+                {
+                    "command": "robloxSync.delete",
+                    "when": "view == robloxExplorer",
+                    "group": "1_modification@3"
+                },
+                {
+                    "command": "robloxSync.copyPath",
+                    "when": "view == robloxExplorer",
+                    "group": "2_clipboard@1"
+                },
+                {
+                    "command": "robloxSync.openScript",
+                    "when": "view == robloxExplorer && viewItem == script",
+                    "group": "0_open@1"
+                }
+            ]
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "pretest": "npm run compile",
+        "test": "node ./out/test/runTest.js",
+        "lint": "eslint src --ext ts",
+        "lint:fix": "eslint src --ext ts --fix",
+        "package": "vsce package"
+    },
+    "dependencies": {
+        "ws": "^8.16.0"
+    },
+    "devDependencies": {
+        "@types/node": "^20.11.0",
+        "@types/vscode": "^1.85.0",
+        "@types/ws": "^8.5.10",
+        "@typescript-eslint/eslint-plugin": "^6.19.0",
+        "@typescript-eslint/parser": "^6.19.0",
+        "eslint": "^8.56.0",
+        "typescript": "^5.3.3",
+        "@vscode/vsce": "^2.22.0"
+    }
+}

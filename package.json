@@ -1,0 +1,56 @@
+{
+    "name": "uxrcoder",
+    "version": "1.0.0",
+    "description": "Real-time two-way synchronization between Roblox Studio and VS Code/Antigravity",
+    "private": true,
+    "workspaces": [
+        "server",
+        "vscode-extension",
+        "shared"
+    ],
+    "scripts": {
+        "setup": "npm install && npm run setup:server && npm run setup:extension",
+        "setup:server": "cd server && npm install",
+        "setup:extension": "cd vscode-extension && npm install",
+        "dev": "cd server && npm run dev",
+        "build": "npm run build:server && npm run build:extension",
+        "build:server": "cd server && npm run build",
+        "build:extension": "cd vscode-extension && npm run compile",
+        "test": "npm run test:server && npm run test:extension",
+        "test:server": "cd server && npm test",
+        "test:extension": "cd vscode-extension && npm test",
+        "lint": "npm run lint:server && npm run lint:extension",
+        "lint:server": "cd server && npm run lint",
+        "lint:extension": "cd vscode-extension && npm run lint",
+        "format": "prettier --write \"**/*.{ts,js,json,md}\"",
+        "format:check": "prettier --check \"**/*.{ts,js,json,md}\"",
+        "clean": "npm run clean:server && npm run clean:extension",
+        "clean:server": "cd server && rm -rf dist node_modules",
+        "clean:extension": "cd vscode-extension && rm -rf out node_modules"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/UXPLIMA/uxrCoder.git"
+    },
+    "keywords": [
+        "roblox",
+        "roblox-studio",
+        "vscode",
+        "sync",
+        "development",
+        "luau",
+        "typescript"
+    ],
+    "author": "UXPLIMA",
+    "license": "MIT",
+    "bugs": {
+        "url": "https://github.com/UXPLIMA/uxrCoder/issues"
+    },
+    "homepage": "https://github.com/UXPLIMA/uxrCoder#readme",
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "devDependencies": {
+        "prettier": "^3.2.0"
+    }
+}

@@ -1,0 +1,15 @@
+{
+    "name": "uxrCoderPlugin",
+    "tree": {
+        "$className": "DataModel",
+        "ServerStorage": {
+            "$className": "ServerStorage",
+            "uxrCoder": {
+                "$className": "Folder",
+                "uxrCoderPlugin": {
+                    "$path": "uxrCoderPlugin.lua"
+                }
+            }
+        }
+    }
+}
