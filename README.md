@@ -1,4 +1,4 @@
-# uxrCoder 🎮
+# uxrCoder
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-green)](https://nodejs.org/)
@@ -14,16 +14,16 @@ uxrCoder enables seamless development workflow by synchronizing your Roblox Data
   <img src="docs/images/demo.gif" alt="uxrCoder Demo" width="800">
 </p>
 
-## ✨ Features
+## Features
 
-- **🔄 Two-Way Sync** - Changes in Roblox Studio instantly reflect in VS Code and vice versa
-- **🌳 Full DataModel Tree** - View and navigate the complete instance hierarchy
-- **📝 Script Editing** - Edit Luau scripts with full VS Code/Antigravity capabilities
-- **🎨 Property Inspector** - View and modify instance properties from the editor
-- **⚡ Real-Time Updates** - Sub-100ms synchronization latency
-- **🤖 AI-Ready** - Designed for seamless AI-assisted development
+- **Two-Way Sync** - Changes in Roblox Studio instantly reflect in VS Code and vice versa
+- **Full DataModel Tree** - View and navigate the complete instance hierarchy
+- **Script Editing** - Edit Luau scripts with full VS Code/Antigravity capabilities
+- **Property Inspector** - View and modify instance properties from the editor
+- **Real-Time Updates** - Sub-100ms synchronization latency
+- **AI-Ready** - Designed for seamless AI-assisted development
 
-## 📦 Installation
+## Installation
 
 ### Prerequisites
 
@@ -75,7 +75,7 @@ npm run compile
 
 Press **F5** in VS Code to launch the Extension Development Host.
 
-## 🚀 Usage
+## Usage
 
 ### Basic Workflow
 
@@ -101,7 +101,7 @@ Right-click on any instance in the Roblox Explorer panel:
 - **Rename** - Change the instance name
 - **Copy Path** - Copy as `game.Workspace.Model` path
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────────┐     HTTP/REST      ┌─────────────────┐     WebSocket      ┌─────────────────┐
@@ -116,7 +116,7 @@ Right-click on any instance in the Roblox Explorer panel:
    Serialization                       State Mgmt                          UI Rendering
 ```
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 uxrCoder/
@@ -130,7 +130,7 @@ uxrCoder/
 │   └── tsconfig.json
 │
 ├── plugin/                     # Roblox Studio plugin
-│   ├── uxrCoderPlugin.lua   # Main plugin source
+│   ├── uxrCoderPlugin.lua     # Main plugin source
 │   └── default.project.json   # Rojo build configuration
 │
 ├── vscode-extension/           # VS Code extension
@@ -149,7 +149,7 @@ uxrCoder/
 └── docs/                       # Documentation
 ```
 
-## 🔧 Configuration
+## Configuration
 
 ### Server Configuration
 
@@ -177,7 +177,7 @@ local CONFIG = {
 }
 ```
 
-## 🧪 Development
+## Development
 
 ### Running Tests
 
@@ -211,7 +211,7 @@ npm run lint      # Check for issues
 npm run format    # Auto-format code
 ```
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
@@ -221,7 +221,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📋 Roadmap
+## Roadmap
 
 - [ ] Full property editing for all instance types
 - [ ] Asset management (images, sounds, meshes)
@@ -230,11 +230,11 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 - [ ] Marketplace extension publishing
 - [ ] Performance profiling tools
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - Inspired by [Rojo](https://rojo.space/) and [Argon](https://argon.wiki/)
 - Built with [Express](https://expressjs.com/), [ws](https://github.com/websockets/ws), and VS Code Extension API
@@ -242,5 +242,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 <p align="center">
-  Made with ❤️ by <strong>UXPLIMA</strong> for the Roblox developer community
+  Made by <strong>UXPLIMA</strong> for the Roblox developer community
 </p>
