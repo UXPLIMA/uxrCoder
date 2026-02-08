@@ -1,51 +1,81 @@
-# uxrCoder Extension for Antigravity & Visual Code
+# uxrCoder VS Code Extension
 
-The official extension for uxrCoder, enabling real-time synchronization with Roblox Studio.
-Designed to be the ultimate companion for AI-assisted Roblox development in **Antigravity** and **Visual Code**.
-Designed to be the ultimate companion for AI-assisted Roblox development in Antigravity and Visual Code.
+Official VS Code extension for browsing and editing Roblox DataModel state synchronized by uxrCoder.
 
 ## Features
 
-### 🌲 Roblox Explorer
-Browse the DataModel tree directly in your editor.
-- **Real-time Sync**: Updates instantly as you make changes in Studio.
-- **Context Actions**: Insert, specific, rename, and delete instances.
-- **Drag & Drop**: (Coming soon) Move instances around.
-
-### 📝 Script Editing
-Edit scripts with full language support and AI assistance.
-- **Server Scripts** (`.server.lua`)
-- **Local Scripts** (`.client.lua`)
-- **Module Scripts** (`.lua`)
-
-### 🎨 Property Editor
-Inspect and modify properties with a custom UI.
-- **Color Picker**: Visual color selection for `Color3`.
-- **Vector Inputs**: Easy editing for `Vector3`, `UDim2`, etc.
-- **Live Updates**: Changes reflect immediately in Studio.
-
-### 📦 Asset Management
-- **Class Browser**: Search and insert any Roblox class.
-- **Export**: Save models as `.rbxmx` or the full place as `.rbxlx`.
-
-### 🛠️ Ecosystem Tools
-- **Luau LSP**: Auto-generates `sourcemap.json`.
-- **Wally**: Built-in commands for package management.
-- **Selene/StyLua**: Linting and formatting support.
+- Roblox Explorer tree view in activity bar
+- Property editor webview
+- Class browser webview
+- Script open/edit workflow for mapped Lua files
+- Context actions for create, rename, delete, copy path, copy/paste
+- Build/export commands (`.rbxlx`, `.rbxmx`)
+- Sourcemap regeneration command
+- Utility commands for Wally, Selene, StyLua project setup flows
 
 ## Commands
 
-- `Roblox: Connect` / `Disconnect`: Manage server connection.
-- `Roblox: Initialize Project`: Setup a new project with Rojo structure.
-- `Roblox: Generate .gitignore`: Create standard ignore file.
-- `Roblox: Build to .rbxlx`: Export the entire place.
-- `Roblox: Export to .rbxmx`: Export selected instance.
-- `Roblox: Regenerate Sourcemap`: Update LSP sourcemap.
-- `Wally: Install`: Run `wally install`.
-- `Selene: Lint`: Run `selene .`.
-- `StyLua: Format`: Run `stylua .`.
+Core connection:
+- `robloxSync.connect`
+- `robloxSync.disconnect`
+- `robloxSync.refresh`
+
+Explorer actions:
+- `robloxSync.insertObject`
+- `robloxSync.rename`
+- `robloxSync.delete`
+- `robloxSync.copyPath`
+- `robloxSync.copyInstance`
+- `robloxSync.pasteInstance`
+- `robloxSync.openScript`
+
+Runtime/build:
+- `robloxSync.play`
+- `robloxSync.run`
+- `robloxSync.stop`
+- `robloxSync.build`
+- `robloxSync.exportModel`
+- `robloxSync.regenerateSourcemap`
+
+Project tooling:
+- `robloxSync.wallyInit`
+- `robloxSync.wallyInstall`
+- `robloxSync.seleneInit`
+- `robloxSync.seleneLint`
+- `robloxSync.styluaInit`
+- `robloxSync.styluaFormat`
+- `robloxSync.generateGitignore`
+- `robloxSync.initProject`
+
+## Settings
+
+- `robloxSync.serverUrl` (default `ws://127.0.0.1:34872`)
+- `robloxSync.autoConnect` (default `true`)
+
+## Development
+
+```bash
+npm install
+npm run compile
+```
+
+Run extension dev host:
+- Open this folder in VS Code
+- Press `F5`
+
+Package extension:
+
+```bash
+npm run package
+```
 
 ## Requirements
 
-- **uxrCoder Sync Server**: Must be running (`npm run dev` in server folder).
-- **Roblox Studio Plugin**: Must be installed and enabled.
+- uxrCoder server running
+- Roblox plugin installed in Studio
+
+## Related Docs
+
+- `../README.md`
+- `../docs/INSTALLATION.md`
+- `../docs/USAGE.md`

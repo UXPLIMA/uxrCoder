@@ -1,46 +1,102 @@
-# Configuration
+# Configuration Reference
 
-uxrCoder uses a configuration file to determine how Roblox instances are mapped to your local file system.
+This document covers project mapping, server runtime variables, and VS Code extension settings.
 
-## Project Configuration (`uxrcoder.project.json`)
+## 1. Project Mapping File
 
-Created in the root of your workspace, this file defines the projection rules.
+uxrCoder looks for one of these files in workspace root:
+- `uxrcoder.project.json`
+- `default.project.json`
+
+### Example
 
 ```json
 {
-  "name": "MyProject",
+  "name": "MyRobloxProject",
   "tree": {
     "$className": "DataModel",
     "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
       "$path": "src/shared"
     },
     "ServerScriptService": {
+      "$className": "ServerScriptService",
       "$path": "src/server"
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "$path": "src/client"
+      }
+    },
+    "Workspace": {
+      "$className": "Workspace",
+      "$path": "src/workspace"
     }
   }
 }
 ```
 
-### Key Fields
+### Mapping Fields
 
-| Field | Description |
-| :--- | :--- |
-| `name` | The name of the project. |
-| `tree` | The mapping hierarchy starting from the DataModel. |
-| `$className` | Specifies the Roblox class for the current directory level. |
-| `$path` | The local file system path where this branch should be synchronized. |
+| Field | Type | Description |
+|---|---|---|
+| `name` | `string` | Project display name. |
+| `tree` | `object` | Root mapping tree from `DataModel`. |
+| `$className` | `string` | Expected Roblox class for that node. |
+| `$path` | `string` | Filesystem projection path for branch. |
+| `$ignoreUnknownInstances` | `boolean` | Optional ignore behavior for unknowns. |
 
-## Server Configuration
+## 2. Server Environment Variables
 
-The server can be configured via environment variables or CLI arguments (if supported).
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `34872` | HTTP/WebSocket server port |
+| `HOST` | `0.0.0.0` | Bind host |
+| `SYNC_INTERVAL` | `100` | Sync logging threshold interval |
+| `WORKSPACE_PATH` | `./workspace` | Root folder for mapped data |
 
-- **PORT**: Default is `34872`.
-- **HOST**: Default is `127.0.0.1`.
-- **WORKSPACE_PATH**: The root directory where your project files reside.
+Example:
 
-## Extension Settings
+```bash
+PORT=34873 HOST=127.0.0.1 WORKSPACE_PATH=./workspace npm run dev
+```
 
-In VS Code, you can modify the following settings in your User or Workspace settings:
+## 3. VS Code Extension Settings
 
-- `robloxSync.serverUrl`: The URL of the sync server (e.g., `ws://127.0.0.1:34872`).
-- `robloxSync.autoConnect`: Automatically connect on startup.
+| Setting | Default | Description |
+|---|---|---|
+| `robloxSync.serverUrl` | `ws://127.0.0.1:34872` | WebSocket endpoint |
+| `robloxSync.autoConnect` | `true` | Connect on startup |
+
+## 4. Agent Runtime Configuration
+
+### Command-level
+- `baseRevision` for optimistic concurrency.
+- `x-idempotency-key` header (or `idempotencyKey` body field) for deduplication.
+
+### Test scenario-level
+- `safety` (timeout, retry, destructive guard, step limits)
+- `runtime` (`none`, `run`, `play`)
+- `isolation` (cleanup and restore policies)
+
+See:
+- `docs/AGENT_API.md`
+- `docs/agent-test-harness.md`
+
+## 5. Recommended Production Defaults
+
+For stable local usage:
+- Keep server bound to loopback unless LAN sync is intentional.
+- Keep one authoritative editor session writing to the workspace.
+- Keep debug artifacts (`.uxr-tests`, `.uxr-debug`) available during triage.
+
+## 6. Ignored/Generated Paths
+
+Common generated paths:
+- `.uxr-tests/`
+- `.uxr-debug/`
+- `robloxsourcemap.json`
+
+Decide in your repo policy whether to commit or ignore these artifacts.

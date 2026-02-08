@@ -1,32 +1,44 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to this project are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Format:
+- [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
+- [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
+
+## [1.1.0] - 2026-02-08
+
+### Added
+- Agent visual baseline subsystem for screenshot assertions and recording.
+- Baseline controls in screenshot test steps: `baselineKey`, `baselineMode`, `baselineAllowMissing`.
+- Attempt-stamped plugin test events and stale-attempt rejection in server test event pipeline.
+- Dedicated docs for agent API, release checklist, and end-to-end tutorials (EN/TR).
+- Multilingual repository entrypoint via `README.md` (EN) and `README.tr.md` (TR).
+
+### Changed
+- Property schema build path optimized to work directly from indexed instances.
+- Derived cache schema generation now avoids unnecessary instance remapping allocations.
+- Autonomous test run finalization now includes isolation cleanup outcome before final pass/fail event.
+- Root/server/extension versions advanced to `1.1.0`.
+- Core documentation set rewritten for release readiness and endpoint parity.
+- CI quality gates expanded to run server lint/test/build and extension lint/compile on each PR/push.
+- Server npm test script now runs in non-watch mode by default (`vitest --run`).
+
+### Fixed
+- Reduced risk of runtime lifecycle race conditions during test retries.
+- Improved deterministic handling of delayed/stale plugin test events.
+- Updated extension/server docs to remove stale or duplicate statements.
+- Plugin enum serialization now tolerates enum-type objects in addition to enum items.
+- Root test pipeline no longer fails when VS Code extension test harness output is absent.
 
 ## [1.0.0] - 2026-02-07
 
 ### Added
-- [CORE] Neural Sync Engine for sub-50ms latency.
-- [EXPLORER] Full Roblox DataModel Explorer in VS Code.
-- [PROPS] Multi-instance property inspector.
-- [FS] Bi-directional file system mapping for .lua files.
-- [LSP] Built-in sourcemap.json generation for Luau LSP support.
-- [BUILD] rbxlx and rbxmx export capabilities.
-
-### Changed
-- [DEV] Transitioned from read-only virtual documents to direct workspace file editing.
-- [UX] Unified context menu for common studio operations.
-- [INFRA] Standardized request logging and service lifecycle management.
+- Real-time Roblox Studio <-> VS Code synchronization platform.
+- DataModel explorer and property editing in extension.
+- Script/file projection and sourcemap generation flow.
+- Build/export endpoints for Roblox place/model artifacts.
 
 ### Fixed
-- [SYNC] Resolved initial synchronization timing issues where explorer appeared empty.
-- [DEDUP] Implemented path-based collision resolution for duplicate instances.
-- [PLUGIN] Added heartbeat-based server restart detection and automatic restoration.
-- [FS] Corrected path navigation for create operations targeting nested instances.
-
-### Professionalization
-- [DOC] Removed all emojis from codebase and documentation.
-- [LOG] Standardized terminal output and log tags ([INFO], [WS], [SYNC], etc.).
-- [COMMENT] Implemented JSDoc/LDoc standards across the entire repository.
+- Initial synchronization stability and duplicate naming behavior.
+- Plugin reconnect and server restart recovery paths.

@@ -24,3 +24,11 @@ robloxsourcemap.json
 # Local artifacts
 .gemini/
 brain/
+.uxr-tests/
+.uxr-debug/
+**/.uxr-tests/
+**/.uxr-debug/
+verify_output.txt
+verify_dist_output.txt
+verification_result.txt
+test_output.txt

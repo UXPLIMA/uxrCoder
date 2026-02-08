@@ -51,6 +51,26 @@ export class Watcher {
     }
 
     /**
+     * Normalize a filesystem path for consistent set membership checks.
+     */
+    private normalizePath(fsPath: string): string {
+        return path.resolve(fsPath);
+    }
+
+    /**
+     * Check whether a path is currently ignored.
+     */
+    private isIgnored(fsPath: string): boolean {
+        const normalized = this.normalizePath(fsPath);
+        for (const ignored of this.ignoredPaths) {
+            if (normalized === ignored || normalized.startsWith(ignored + path.sep)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Start watching for changes.
      */
     start(): void {
@@ -82,9 +102,10 @@ export class Watcher {
      * Used when the server writes to files to prevent infinite loops.
      */
     ignore(filePath: string): void {
-        this.ignoredPaths.add(filePath);
+        const normalized = this.normalizePath(filePath);
+        this.ignoredPaths.add(normalized);
         // Remove from ignore list after 2 seconds
-        setTimeout(() => this.ignoredPaths.delete(filePath), 2000);
+        setTimeout(() => this.ignoredPaths.delete(normalized), 2000);
     }
 
     /**
@@ -120,10 +141,10 @@ export class Watcher {
      * Handle file creation or update.
      */
     private async handleFileChange(type: 'create' | 'update', filePath: string): Promise<void> {
-        if (this.isPaused || this.ignoredPaths.has(filePath)) return;
+        if (this.isPaused || this.isIgnored(filePath)) return;
 
         const robloxPath = this.fileMapper.getRobloxPath(filePath);
-        if (!robloxPath) return;
+        if (!robloxPath || robloxPath.length === 0) return;
 
         // Check if any ancestor is a script - scripts cannot have file children
         if (this.hasScriptAncestor(robloxPath)) {
@@ -250,10 +271,10 @@ export class Watcher {
      * Handle file deletion.
      */
     private handleFileDelete(filePath: string): void {
-        if (this.isPaused || this.ignoredPaths.has(filePath)) return;
+        if (this.isPaused || this.isIgnored(filePath)) return;
 
         const robloxPath = this.fileMapper.getRobloxPath(filePath);
-        if (!robloxPath) return;
+        if (!robloxPath || robloxPath.length === 0) return;
 
         // Metadata deleted -> ignored for now, or maybe reset properties?
         if (filePath.endsWith('.meta.json')) return;
@@ -277,10 +298,10 @@ export class Watcher {
      * Handle directory creation.
      */
     private handleDirCreate(dirPath: string): void {
-        if (this.isPaused || this.ignoredPaths.has(dirPath)) return;
+        if (this.isPaused || this.isIgnored(dirPath)) return;
 
         const robloxPath = this.fileMapper.getRobloxPath(dirPath);
-        if (!robloxPath) return;
+        if (!robloxPath || robloxPath.length === 0) return;
 
         // Check if any ancestor is a script - scripts cannot have children
         if (this.hasScriptAncestor(robloxPath)) {
@@ -314,10 +335,10 @@ export class Watcher {
      * Handle directory deletion.
      */
     private handleDirDelete(dirPath: string): void {
-        if (this.isPaused || this.ignoredPaths.has(dirPath)) return;
+        if (this.isPaused || this.isIgnored(dirPath)) return;
 
         const robloxPath = this.fileMapper.getRobloxPath(dirPath);
-        if (!robloxPath) return;
+        if (!robloxPath || robloxPath.length === 0) return;
 
         // Check if any ancestor is a script
         if (this.hasScriptAncestor(robloxPath)) {

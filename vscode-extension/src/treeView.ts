@@ -197,7 +197,9 @@ export class RobloxTreeItem extends vscode.TreeItem {
  * Provides data for the Roblox Explorer tree view.
  * Implements VS Code's TreeDataProvider interface.
  */
-export class RobloxExplorerProvider implements vscode.TreeDataProvider<RobloxTreeItem> {
+export class RobloxExplorerProvider implements vscode.TreeDataProvider<RobloxTreeItem>, vscode.TreeDragAndDropController<RobloxTreeItem> {
+    dropMimeTypes = ['application/vnd.code.tree.robloxExplorer'];
+    dragMimeTypes = ['application/vnd.code.tree.robloxExplorer'];
     /** Event emitter for tree data changes */
     private _onDidChangeTreeData = new vscode.EventEmitter<RobloxTreeItem | undefined | null | void>();
 
@@ -336,5 +338,104 @@ export class RobloxExplorerProvider implements vscode.TreeDataProvider<RobloxTre
         }
 
         return undefined;
+    }
+    // ... (existing methods)
+
+    /**
+     * Handle drag event.
+     */
+    public async handleDrag(
+        source: readonly RobloxTreeItem[],
+        dataTransfer: vscode.DataTransfer,
+        token: vscode.CancellationToken
+    ): Promise<void> {
+        // Create a list of serialized paths
+        const sources = source.map(item => ({
+            path: item.path,
+            className: item.instance.className
+        }));
+
+        dataTransfer.set('application/vnd.code.tree.robloxExplorer', new vscode.DataTransferItem(sources));
+    }
+
+    /**
+     * Handle drop event.
+     */
+    public async handleDrop(
+        target: RobloxTreeItem | undefined,
+        dataTransfer: vscode.DataTransfer,
+        token: vscode.CancellationToken
+    ): Promise<void> {
+        const transferItem = dataTransfer.get('application/vnd.code.tree.robloxExplorer');
+        if (!transferItem) {
+            return;
+        }
+
+        const sources = transferItem.value as Array<{ path: string[], className: string }>;
+
+        // Cannot drop on root (game) - Roblox doesn't allow parenting to Game
+        if (!target) {
+            vscode.window.showWarningMessage('Cannot move instances to the root level.');
+            return;
+        }
+
+        const targetPath = target.path;
+
+        // Roblox services that cannot be reparented
+        const SERVICES = [
+            'Workspace', 'Lighting', 'ReplicatedFirst', 'ReplicatedStorage',
+            'ServerScriptService', 'ServerStorage', 'StarterGui', 'StarterPack',
+            'StarterPlayer', 'Teams', 'SoundService', 'LogService'
+        ];
+
+        let movedCount = 0;
+        let skippedCount = 0;
+
+        for (const source of sources) {
+            // Validation: Cannot reparent services (top-level items)
+            if (source.path.length === 1 && SERVICES.includes(source.path[0])) {
+                vscode.window.showWarningMessage(`Cannot move service "${source.path[0]}" - services are fixed in Roblox.`);
+                skippedCount++;
+                continue;
+            }
+
+            // Validation: Cannot drag into itself or a descendant
+            const isSelfOrDescendant = targetPath.length >= source.path.length &&
+                source.path.every((val, index) => targetPath[index] === val);
+
+            if (isSelfOrDescendant) {
+                vscode.window.showWarningMessage(`Cannot move "${source.path[source.path.length - 1]}" into itself or its own descendant.`);
+                skippedCount++;
+                continue;
+            }
+
+            // Validation: Cannot drag into its own parent (no-op)
+            const isDirectChild = source.path.length === targetPath.length + 1 &&
+                source.path.slice(0, -1).every((val, index) => targetPath[index] === val);
+
+            if (isDirectChild) {
+                skippedCount++;
+                continue;
+            }
+
+            // Send reparent request
+            this.syncClient.reparentInstance(source.path, targetPath);
+            movedCount++;
+        }
+
+        // Notify user of results
+        if (movedCount > 0) {
+            const targetName = target.instance.name;
+            if (movedCount === 1) {
+                const sourceName = sources.find(s => {
+                    const isService = s.path.length === 1 && SERVICES.includes(s.path[0]);
+                    return !isService;
+                });
+                const name = sourceName ? sourceName.path[sourceName.path.length - 1] : 'Instance';
+                vscode.window.showInformationMessage(`Moved "${name}" to "${targetName}"`);
+            } else {
+                vscode.window.showInformationMessage(`Moved ${movedCount} instances to "${targetName}"`);
+            }
+        }
     }
 }

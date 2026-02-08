@@ -115,12 +115,84 @@ export interface LogMessage {
 
 export type DataModelSyncType = 'create' | 'update' | 'delete' | 'full_sync';
 
+export interface ReparentInstanceMessage {
+    type: 'reparent';
+    timestamp: number;
+    path: string[];
+    newParentPath: string[];
+    newName?: string;
+}
+
 export type SyncMessage =
     | { type: DataModelSyncType; timestamp: number; path: string[]; instance?: RobloxInstance; property?: { name: string; value: PropertyValue }; instances?: RobloxInstance[] }
     | CommandMessage
-    | LogMessage;
+    | LogMessage
+    | ReparentInstanceMessage;
 
 export type PendingChange = SyncMessage & {
     id: string;
     confirmed: boolean;
 };
+
+export type AgentPropertyKind =
+    | 'primitive'
+    | 'enum'
+    | 'struct'
+    | 'instanceRef'
+    | 'readonly'
+    | 'unknown';
+
+export interface AgentNumericConstraint {
+    min?: number;
+    max?: number;
+    integer?: boolean;
+    strict: boolean;
+    source: 'observed' | 'builtin';
+}
+
+export interface AgentStringConstraint {
+    minLength?: number;
+    maxLength?: number;
+    nonEmpty?: boolean;
+    pattern?: string;
+    strict: boolean;
+    source: 'observed' | 'builtin';
+}
+
+export interface AgentEnumConstraint {
+    allowedNames?: string[];
+    allowedValues?: number[];
+    strict: boolean;
+    source: 'observed' | 'builtin';
+}
+
+export interface AgentPropertySchemaEntry {
+    name: string;
+    kind: AgentPropertyKind;
+    kinds: AgentPropertyKind[];
+    writable: boolean;
+    nullable: boolean;
+    valueType: string;
+    valueTypes: string[];
+    enumType?: string;
+    enumTypes?: string[];
+    numericConstraint?: AgentNumericConstraint;
+    stringConstraint?: AgentStringConstraint;
+    enumConstraint?: AgentEnumConstraint;
+    serializerHint: string;
+    deserializerHint: string;
+    observedOn: number;
+}
+
+export interface AgentClassPropertySchema {
+    className: string;
+    instanceCount: number;
+    properties: AgentPropertySchemaEntry[];
+}
+
+export interface AgentPropertySchemaResponse {
+    schemaVersion: 'uxr-agent-property-schema/v1';
+    generatedAt: number;
+    revision: number;
+    classes: AgentClassPropertySchema[];
+}

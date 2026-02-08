@@ -2,57 +2,45 @@
 
 ## Supported Versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 1.0.x   | :white_check_mark: |
+| Version | Supported |
+|---|---|
+| 1.1.x | Yes |
+| 1.0.x | Limited (security fixes at maintainer discretion) |
 
 ## Reporting a Vulnerability
 
-We take security seriously. If you discover a security vulnerability within uxrCoder, please follow these steps:
+Do not open public issues for undisclosed vulnerabilities.
 
-### Do NOT
+Preferred channels:
+1. GitHub Security Advisories (private report)
+2. If unavailable, contact repository maintainer directly via trusted channel
 
-- Open a public issue describing the vulnerability
-- Share details of the vulnerability publicly before it's fixed
+Please include:
+- vulnerability description
+- impact and affected components
+- reproduction steps
+- suggested mitigation (optional)
 
-### Do
+## Response Targets
 
-1. **Email us directly** at security@example.com with:
-   - Description of the vulnerability
-   - Steps to reproduce
-   - Potential impact
-   - Any suggested fixes (optional)
-
-2. **Allow time for response** - We will acknowledge receipt within 48 hours
-
-3. **Work with us** - We'll keep you informed of progress toward a fix
-
-### What to expect
-
-- **Acknowledgment**: Within 48 hours
-- **Initial assessment**: Within 1 week
-- **Fix timeline**: Usually within 30 days for critical issues
-
-### After the fix
-
-- We will credit you in the CHANGELOG (unless you prefer to remain anonymous)
-- We will notify you when the fix is released
-
-## Security Best Practices
-
-When using uxrCoder:
-
-1. **Keep dependencies updated** - Run `npm update` regularly
-2. **Use localhost only** - The server binds to 0.0.0.0 by default for compatibility, but is designed for local use
-3. **Don't expose the server** - Never port-forward or expose the sync server to the internet
-4. **Review plugin permissions** - Ensure the Roblox plugin only has necessary permissions
+- Initial acknowledgement: within 72 hours
+- Triage decision: within 7 days
+- Patch target: depends on severity and exploitability
 
 ## Scope
 
-This security policy covers:
+In scope:
+- `server/` (HTTP/WS APIs, sync logic, agent layer)
+- `plugin/` (Studio bridge and autonomous test execution)
+- `vscode-extension/` (editor client and command surface)
 
-- The Node.js sync server (`server/`)
-- The VS Code extension (`vscode-extension/`)
-- The Roblox Studio plugin (`plugin/`)
+Out of scope:
+- vulnerabilities only present in third-party upstream dependencies (tracked separately)
+- local-only misconfiguration where server is intentionally exposed
 
-Third-party dependencies are not covered by this policy but will be updated if vulnerabilities are discovered.
+## Security Best Practices for Users
+
+- Keep server bound to local/trusted network only.
+- Do not expose sync port publicly.
+- Keep dependencies updated.
+- Treat generated debug bundles/artifacts as potentially sensitive project state.

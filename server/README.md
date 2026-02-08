@@ -1,51 +1,95 @@
-# uxrCoder Sync Server
+# uxrCoder Server
 
-The backend server for uxrCoder that bridges Roblox Studio with your editor (Antigravity / Visual Code).
+Node.js backend for Roblox Studio, VS Code extension, and AI agent orchestration.
 
-## Overview
+## Responsibilities
 
-The server runs on Node.js and manages:
-1.  **WebSocket Server**: Communicates with the editor extension.
-2.  **HTTP API**: Communicates with the Roblox Studio plugin.
-3.  **File Watcher**: Monitors the filesystem for changes.
-4.  **Sync Engine**: Handles conflict resolution and delta updates.
-5.  **Build System**: Serializes instances to `.rbxlx` and `.rbxmx`.
-6.  **Sourcemap Generator**: Creates `sourcemap.json` for Luau LSP.
+- In-memory canonical DataModel state (`SyncEngine`)
+- HTTP APIs for plugin sync and agent operations
+- WebSocket broadcast channel for editor clients
+- Filesystem projection and watcher integration
+- Autonomous test queue and artifact persistence
+- Debug/profile/export tooling for reproducible triage
 
-## API Endpoints
-
-### Sync
-- `GET /health`: Check server status.
-- `GET /changes`: Get pending changes for Roblox Studio (long-polling).
-- `POST /sync`: Push changes from Roblox Studio to Server.
-
-### Build
-- `GET /build/rbxlx`: Download the entire project as a place file.
-- `POST /build/rbxmx`: Download specific instances as a model file.
-
-### Ecosystem
-- `POST /sourcemap/regenerate`: Trigger sourcemap regeneration.
-
-## Configuration
-
-The server can be configured via `config.json` or environment variables:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | 34872 | Server port |
-| `HOST` | 0.0.0.0 | Bind address |
-| `SYNC_INTERVAL` | 100 | Polling interval (ms) |
-| `WORKSPACE_PATH` | ./workspace | Root directory for sync |
-
-## Usage
+## Run
 
 ```bash
-# Install dependencies
 npm install
-
-# Start server
 npm run dev
+```
 
-# Run tests
+Build:
+
+```bash
+npm run build
+npm start
+```
+
+Tests:
+
+```bash
 npm test
 ```
+
+## Core Endpoints
+
+Sync bridge:
+- `GET /health`
+- `POST /sync`
+- `POST /sync/delta`
+- `GET /changes`
+- `POST /changes/confirm`
+
+Agent plane:
+- `GET /agent/snapshot`
+- `GET /agent/schema/properties`
+- `POST /agent/command`
+- `POST /agent/commands`
+
+Autonomous tests:
+- `POST /agent/tests/run`
+- `GET /agent/tests`
+- `GET /agent/tests/:id`
+- `POST /agent/tests/:id/abort`
+- `POST /agent/tests/events`
+- `GET /agent/tests/:id/report`
+- `GET /agent/tests/:id/artifacts`
+- `GET /agent/tests/metrics`
+
+Observability:
+- `GET /agent/locks`
+- `POST /agent/debug/export`
+- `GET /agent/debug/profile`
+
+Build/export:
+- `POST /build/:format`
+- `POST /build/rbxmx`
+- `POST /sourcemap/regenerate`
+
+## Environment Variables
+
+- `PORT` (default `34872`)
+- `HOST` (default `0.0.0.0`)
+- `SYNC_INTERVAL` (default `100`)
+- `WORKSPACE_PATH` (default `./workspace`)
+
+## Performance Utilities
+
+Large-tree synthetic profile:
+
+```bash
+npm run profile:large-tree
+```
+
+Optional env knobs:
+- `FOLDER_COUNT`
+- `PARTS_PER_FOLDER`
+- `ITERATIONS`
+- `LOOKUP_SAMPLE`
+- `PROFILE_OUT`
+
+## Related Docs
+
+- `../docs/ARCHITECTURE.md`
+- `../docs/AGENT_API.md`
+- `../docs/agent-test-harness.md`

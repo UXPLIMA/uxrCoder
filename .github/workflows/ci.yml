@@ -7,9 +7,9 @@ on:
     branches: [main]
 
 jobs:
-  # Server Build & Lint
+  # Server Quality Gates
   server:
-    name: Server Build
+    name: Server Quality
     runs-on: ubuntu-latest
 
     strategy:
@@ -24,18 +24,23 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          cache: npm
 
-      - name: Install dependencies
+      - name: Install workspace dependencies
         run: npm install
-        working-directory: server
+
+      - name: Lint
+        run: npm --prefix server run lint
+
+      - name: Test
+        run: npm --prefix server test -- --run
 
       - name: Build
-        run: npm run build
-        working-directory: server
+        run: npm --prefix server run build
 
-  # VS Code Extension Build
+  # VS Code Extension Quality Gates
   extension:
-    name: Extension Build
+    name: Extension Quality
     runs-on: ubuntu-latest
 
     strategy:
@@ -50,14 +55,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          cache: npm
 
-      - name: Install dependencies
+      - name: Install workspace dependencies
         run: npm install
-        working-directory: vscode-extension
+
+      - name: Lint
+        run: npm --prefix vscode-extension run lint
 
       - name: Compile
-        run: npm run compile
-        working-directory: vscode-extension
+        run: npm --prefix vscode-extension run compile
 
   # Release Build
   release:
@@ -74,18 +81,21 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20.x
+          cache: npm
+
+      - name: Install workspace dependencies
+        run: npm install
 
       - name: Build Server
         run: |
-          cd server
-          npm install
-          npm run build
+          npm --prefix server run lint
+          npm --prefix server test -- --run
+          npm --prefix server run build
 
       - name: Build Extension
         run: |
-          cd vscode-extension
-          npm install
-          npm run compile
+          npm --prefix vscode-extension run lint
+          npm --prefix vscode-extension run compile
 
       - name: Upload Server Artifact
         uses: actions/upload-artifact@v4

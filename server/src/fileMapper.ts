@@ -35,7 +35,7 @@ export const DATA_EXTENSIONS: Record<string, string> = {
  * Support for project configuration mapping.
  */
 export class FileMapper {
-    /** Callback to notify when a file is written */
+    /** Callback to notify when a filesystem path is mutated */
     private onWriteCallback: ((path: string) => void) | null = null;
 
     /** Reference to sync engine for looking up instances */
@@ -78,8 +78,16 @@ export class FileMapper {
      */
     private notifyWrite(filePath: string): void {
         if (this.onWriteCallback) {
-            this.onWriteCallback(filePath);
+            this.onWriteCallback(path.resolve(filePath));
         }
+    }
+
+    /**
+     * Check whether candidatePath is inside basePath (or equal to it).
+     */
+    private isWithin(basePath: string, candidatePath: string): boolean {
+        const rel = path.relative(basePath, candidatePath);
+        return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
     }
 
     /**
@@ -146,7 +154,8 @@ export class FileMapper {
 
         if (!this.config) {
             const rel = path.relative(this.basePath, absPath);
-            if (rel.startsWith('..')) return null;
+            if (!this.isWithin(this.basePath, absPath)) return null;
+            if (rel === '') return [];
             return this.fileToRobloxPath(rel.split(path.sep));
         }
 
@@ -157,7 +166,7 @@ export class FileMapper {
         mappings.sort((a, b) => b.fsPath.length - a.fsPath.length);
 
         for (const mapping of mappings) {
-            if (absPath.startsWith(mapping.fsPath)) {
+            if (this.isWithin(mapping.fsPath, absPath)) {
                 const rel = path.relative(mapping.fsPath, absPath);
                 // If file is exactly the mapped folder, rel is empty string
                 const parts = rel ? rel.split(path.sep) : [];
@@ -231,6 +240,88 @@ export class FileMapper {
     }
 
     /**
+     * Move files/folders on disk when an instance is reparented.
+     * Handles scripts (single files) and containers (directories).
+     *
+     * @param oldPath - Original Roblox path of the instance
+     * @param newParentPath - Roblox path of the new parent
+     * @param newName - Optional resolved name at destination
+     */
+    reparentFiles(oldPath: string[], newParentPath: string[], newName?: string): void {
+        const instanceName = newName || oldPath[oldPath.length - 1];
+        const oldFsPath = this.getFsPath(oldPath);
+        const newParentFsPath = this.getFsPath(newParentPath);
+        const newFsPath = path.join(newParentFsPath, instanceName);
+
+        // Determine what exists on disk for the old path
+        // Could be a directory (Folder, Model, Service) or script files
+        try {
+            // Check for directory first
+            if (fs.existsSync(oldFsPath) && fs.statSync(oldFsPath).isDirectory()) {
+                this.ensureDir(newParentFsPath);
+                if (fs.existsSync(newFsPath)) {
+                    process.stdout.write(`[REPARENT] Target path already exists, skipping fs move: ${newFsPath}\n`);
+                    return;
+                }
+                this.notifyWrite(oldFsPath);
+                this.notifyWrite(newFsPath);
+                fs.renameSync(oldFsPath, newFsPath);
+                process.stdout.write(`[REPARENT] Moved directory: ${oldFsPath} -> ${newFsPath}\n`);
+                return;
+            }
+
+            // Check for script files
+            for (const ext of Object.values(SCRIPT_EXTENSIONS)) {
+                const oldScriptPath = oldFsPath + ext;
+                if (fs.existsSync(oldScriptPath)) {
+                    this.ensureDir(newParentFsPath);
+                    const newScriptPath = newFsPath + ext;
+                    if (fs.existsSync(newScriptPath)) {
+                        process.stdout.write(`[REPARENT] Target script already exists, skipping: ${newScriptPath}\n`);
+                        return;
+                    }
+                    this.notifyWrite(oldScriptPath);
+                    this.notifyWrite(newScriptPath);
+                    fs.renameSync(oldScriptPath, newScriptPath);
+                    process.stdout.write(`[REPARENT] Moved script: ${oldScriptPath} -> ${newScriptPath}\n`);
+
+                    // Also move .meta.json if it exists
+                    const oldMetaPath = oldFsPath + '.meta.json';
+                    const newMetaPath = newFsPath + '.meta.json';
+                    if (fs.existsSync(oldMetaPath)) {
+                        this.notifyWrite(oldMetaPath);
+                        this.notifyWrite(newMetaPath);
+                        fs.renameSync(oldMetaPath, newMetaPath);
+                    }
+                    return;
+                }
+            }
+
+            // Check for data files
+            for (const ext of Object.values(DATA_EXTENSIONS)) {
+                const oldDataPath = oldFsPath + ext;
+                if (fs.existsSync(oldDataPath)) {
+                    this.ensureDir(newParentFsPath);
+                    const newDataPath = newFsPath + ext;
+                    if (fs.existsSync(newDataPath)) {
+                        process.stdout.write(`[REPARENT] Target data file already exists, skipping: ${newDataPath}\n`);
+                        return;
+                    }
+                    this.notifyWrite(oldDataPath);
+                    this.notifyWrite(newDataPath);
+                    fs.renameSync(oldDataPath, newDataPath);
+                    process.stdout.write(`[REPARENT] Moved data file: ${oldDataPath} -> ${newDataPath}\n`);
+                    return;
+                }
+            }
+
+            process.stdout.write(`[REPARENT] No filesystem artifact found for: ${oldFsPath}\n`);
+        } catch (error) {
+            process.stdout.write(`[REPARENT ERROR] Failed to move files: ${error}\n`);
+        }
+    }
+
+    /**
      * Sync all instances to the filesystem.
      * Creates directories and files for the entire DataModel tree.
      *
@@ -271,6 +362,10 @@ export class FileMapper {
 
             case 'delete':
                 this.handleDelete(message, fsPath);
+                break;
+
+            case 'reparent':
+                this.reparentFiles(message.path, message.newParentPath, message.newName);
                 break;
         }
     }
@@ -345,16 +440,27 @@ export class FileMapper {
     private handleUpdate(message: SyncMessage, instancePath: string): void {
         if (message.type !== 'update' || !message.property) return;
 
-        // Get the instance from syncEngine to check its className
-        // (Update messages don't include the full instance)
-        const instance = this.getInstanceByPath(message.path);
-        if (!instance) return;
-
         // Check if any ancestor is a script - scripts' children don't have files
         if (this.hasScriptAncestor(message.path)) {
             process.stdout.write(`[SKIP] Update suppressed for "${message.path.join('.')}" due to script ancestor restriction.\n`);
             return;
         }
+
+        // Name updates are filesystem renames.
+        if (message.property.name === 'Name' && typeof message.property.value === 'string') {
+            const requestedName = message.property.value.trim();
+            if (requestedName.length === 0) {
+                return;
+            }
+            const parentPath = message.path.slice(0, -1);
+            this.reparentFiles(message.path, parentPath, requestedName);
+            return;
+        }
+
+        // Get the instance from syncEngine to check its className
+        // (Update messages don't include the full instance)
+        const instance = this.getInstanceByPath(message.path);
+        if (!instance) return;
 
         if (message.property.name === 'Source' && this.isScriptClass(instance.className)) {
             // Update script source
@@ -385,14 +491,18 @@ export class FileMapper {
      * Handle delete operation from sync message.
      */
     private handleDelete(message: SyncMessage, instancePath: string): void {
+        if (message.type !== 'delete') {
+            return;
+        }
+
         // Check if any ancestor is a script - scripts' children don't have files
-        if (message.type === 'delete' && this.hasScriptAncestor(message.path)) {
+        if (this.hasScriptAncestor(message.path)) {
             process.stdout.write(`[SKIP] Deletion suppressed for "${message.path.join('.')}" due to script ancestor restriction.\n`);
             return;
         }
 
         // Get instance info before it's deleted (if still available)
-        const instance = message.type === 'delete' ? this.getInstanceByPath(message.path) : undefined;
+        const instance = this.getInstanceByPath(message.path);
 
         if (instance) {
             // Delete based on instance type
@@ -400,29 +510,29 @@ export class FileMapper {
                 const ext = this.getScriptExtension(instance.className);
                 const scriptPath = instancePath + ext;
                 if (fs.existsSync(scriptPath)) {
-                    fs.unlinkSync(scriptPath);
                     this.notifyWrite(scriptPath);
+                    fs.unlinkSync(scriptPath);
                 }
 
                 // Also delete metadata if exists
                 const metaPath = instancePath + '.meta.json';
                 if (fs.existsSync(metaPath)) {
-                    fs.unlinkSync(metaPath);
                     this.notifyWrite(metaPath);
+                    fs.unlinkSync(metaPath);
                 }
             } else if (this.isDataClass(instance.className)) {
                 const ext = this.getDataExtension(instance.className);
                 const dataPath = instancePath + ext;
                 if (fs.existsSync(dataPath)) {
-                    fs.unlinkSync(dataPath);
                     this.notifyWrite(dataPath);
+                    fs.unlinkSync(dataPath);
                 }
 
                 // Also delete metadata if exists
                 const metaPath = instancePath + '.meta.json';
                 if (fs.existsSync(metaPath)) {
-                    fs.unlinkSync(metaPath);
                     this.notifyWrite(metaPath);
+                    fs.unlinkSync(metaPath);
                 }
             } else {
                 // It's a folder/container
@@ -430,8 +540,42 @@ export class FileMapper {
             }
         } else {
             // Instance info not available, try to delete whatever exists
-            // This handles cases where instance was already removed from state
-            this.deleteRecursive(instancePath);
+            // This handles cases where instance was already removed from state.
+            let removedAny = false;
+
+            for (const ext of Object.values(SCRIPT_EXTENSIONS)) {
+                const candidate = instancePath + ext;
+                if (fs.existsSync(candidate)) {
+                    this.notifyWrite(candidate);
+                    fs.unlinkSync(candidate);
+                    removedAny = true;
+                }
+            }
+
+            for (const ext of Object.values(DATA_EXTENSIONS)) {
+                const candidate = instancePath + ext;
+                if (fs.existsSync(candidate)) {
+                    this.notifyWrite(candidate);
+                    fs.unlinkSync(candidate);
+                    removedAny = true;
+                }
+            }
+
+            const sidecarMeta = instancePath + '.meta.json';
+            if (fs.existsSync(sidecarMeta)) {
+                this.notifyWrite(sidecarMeta);
+                fs.unlinkSync(sidecarMeta);
+                removedAny = true;
+            }
+
+            if (fs.existsSync(instancePath)) {
+                this.deleteRecursive(instancePath);
+                removedAny = true;
+            }
+
+            if (!removedAny) {
+                process.stdout.write(`[DELETE] No filesystem artifact found for "${message.path.join('.')}"\n`);
+            }
         }
     }
 
@@ -537,6 +681,7 @@ export class FileMapper {
         if (!fs.existsSync(targetPath)) return;
 
         const stat = fs.statSync(targetPath);
+        this.notifyWrite(targetPath);
 
         if (stat.isDirectory()) {
             // Delete contents first
@@ -561,8 +706,35 @@ export class FileMapper {
      * @param dirPath - Directory path to ensure
      */
     private ensureDir(dirPath: string): void {
-        if (!fs.existsSync(dirPath)) {
-            fs.mkdirSync(dirPath, { recursive: true });
+        const resolvedTarget = path.resolve(dirPath);
+        const resolvedBase = path.resolve(this.basePath);
+
+        if (fs.existsSync(resolvedTarget)) {
+            return;
+        }
+
+        if (!this.isWithin(resolvedBase, resolvedTarget)) {
+            fs.mkdirSync(resolvedTarget, { recursive: true });
+            this.notifyWrite(resolvedTarget);
+            return;
+        }
+
+        const relative = path.relative(resolvedBase, resolvedTarget);
+        const segments = relative.split(path.sep).filter(Boolean);
+        let current = resolvedBase;
+
+        if (segments.length === 0) {
+            fs.mkdirSync(resolvedTarget, { recursive: true });
+            this.notifyWrite(resolvedTarget);
+            return;
+        }
+
+        for (const segment of segments) {
+            current = path.join(current, segment);
+            if (!fs.existsSync(current)) {
+                fs.mkdirSync(current);
+                this.notifyWrite(current);
+            }
         }
     }
 

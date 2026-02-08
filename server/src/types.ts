@@ -101,8 +101,10 @@ export interface EnumValue {
 
 export interface CommandMessage {
     type: 'command';
-    action: 'play' | 'run' | 'stop';
+    action: 'play' | 'run' | 'stop' | 'test_run' | 'test_abort';
     timestamp: number;
+    runId?: string;
+    payload?: Record<string, unknown>;
 }
 
 export interface LogMessage {
@@ -115,10 +117,19 @@ export interface LogMessage {
 
 export type DataModelSyncType = 'create' | 'update' | 'delete' | 'full_sync';
 
+export interface ReparentInstanceMessage {
+    type: 'reparent';
+    timestamp: number;
+    path: string[];
+    newParentPath: string[];
+    newName?: string;
+}
+
 export type SyncMessage =
     | { type: DataModelSyncType; timestamp: number; path: string[]; instance?: RobloxInstance; property?: { name: string; value: PropertyValue }; instances?: RobloxInstance[] }
     | CommandMessage
-    | LogMessage;
+    | LogMessage
+    | ReparentInstanceMessage;
 
 export interface ServerConfig {
     port: number;
@@ -157,4 +168,158 @@ export interface ProjectConfig {
     tree: ProjectTree;
     servePlaceIds?: number[];
     servePlaces?: string[];
+}
+
+export interface AgentSnapshotInstance {
+    id: string;
+    className: string;
+    name: string;
+    path: string[];
+    parentId: string | null;
+    childIds: string[];
+    properties: Record<string, PropertyValue>;
+}
+
+export interface AgentSnapshotResponse {
+    revision: number;
+    generatedAt: number;
+    instances: AgentSnapshotInstance[];
+}
+
+interface AgentTargetById {
+    targetId: string;
+    targetPath?: never;
+}
+
+interface AgentTargetByPath {
+    targetPath: string[];
+    targetId?: never;
+}
+
+type AgentTarget = AgentTargetById | AgentTargetByPath;
+
+interface AgentParentById {
+    parentId: string;
+    parentPath?: never;
+}
+
+interface AgentParentByPath {
+    parentPath: string[];
+    parentId?: never;
+}
+
+type AgentParentRef = AgentParentById | AgentParentByPath;
+
+interface AgentNewParentById {
+    newParentId: string;
+    newParentPath?: never;
+}
+
+interface AgentNewParentByPath {
+    newParentPath: string[];
+    newParentId?: never;
+}
+
+type AgentNewParentRef = AgentNewParentById | AgentNewParentByPath;
+
+export type AgentCommand =
+    | ({
+        op: 'create';
+        className: string;
+        name: string;
+        properties?: Record<string, PropertyValue>;
+    } & AgentParentRef)
+    | ({
+        op: 'update';
+        property: string;
+        value: PropertyValue;
+    } & AgentTarget)
+    | ({
+        op: 'rename';
+        name: string;
+    } & AgentTarget)
+    | ({
+        op: 'delete';
+    } & AgentTarget)
+    | ({
+        op: 'reparent';
+    } & AgentTarget & AgentNewParentRef);
+
+export interface AgentCommandResult {
+    index: number;
+    op: AgentCommand['op'];
+    success: boolean;
+    error?: string;
+    resolvedPath?: string[];
+    resolvedId?: string;
+    conflict?: AgentConflictPayload;
+}
+
+export interface AgentConflictPayload {
+    reason: 'not_found' | 'locked' | 'revision_mismatch' | 'validation_failed';
+    expected: Record<string, unknown>;
+    actual?: Record<string, unknown>;
+}
+
+export type AgentPropertyKind =
+    | 'primitive'
+    | 'enum'
+    | 'struct'
+    | 'instanceRef'
+    | 'readonly'
+    | 'unknown';
+
+export interface AgentNumericConstraint {
+    min?: number;
+    max?: number;
+    integer?: boolean;
+    strict: boolean;
+    source: 'observed' | 'builtin';
+}
+
+export interface AgentStringConstraint {
+    minLength?: number;
+    maxLength?: number;
+    nonEmpty?: boolean;
+    pattern?: string;
+    strict: boolean;
+    source: 'observed' | 'builtin';
+}
+
+export interface AgentEnumConstraint {
+    allowedNames?: string[];
+    allowedValues?: number[];
+    strict: boolean;
+    source: 'observed' | 'builtin';
+}
+
+export interface AgentPropertySchemaEntry {
+    name: string;
+    kind: AgentPropertyKind;
+    kinds: AgentPropertyKind[];
+    writable: boolean;
+    nullable: boolean;
+    valueType: string;
+    valueTypes: string[];
+    enumType?: string;
+    enumTypes?: string[];
+    numericConstraint?: AgentNumericConstraint;
+    stringConstraint?: AgentStringConstraint;
+    enumConstraint?: AgentEnumConstraint;
+    serializerHint: string;
+    deserializerHint: string;
+    observedOn: number;
+}
+
+export interface AgentClassPropertySchema {
+    className: string;
+    instanceCount: number;
+    properties: AgentPropertySchemaEntry[];
+}
+
+export interface AgentPropertySchemaResponse {
+    schemaVersion: 'uxr-agent-property-schema/v1';
+    generatedAt: number;
+    revision: number;
+    classes: AgentClassPropertySchema[];
 }

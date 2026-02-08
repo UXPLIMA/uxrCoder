@@ -1,186 +1,99 @@
 # Contributing to uxrCoder
 
-Thank you for your interest in contributing to uxrCoder! This document provides guidelines and instructions for contributing.
+Thanks for contributing.
 
-## Table of Contents
+This project prioritizes deterministic sync behavior, agent safety, and reproducible debugging.
 
-- [Code of Conduct](#code-of-conduct)
-- [Getting Started](#getting-started)
-- [Development Setup](#development-setup)
-- [Making Changes](#making-changes)
-- [Pull Request Process](#pull-request-process)
-- [Coding Standards](#coding-standards)
-- [Commit Messages](#commit-messages)
+## 1. Development Setup
 
-## Code of Conduct
+Prerequisites:
+- Node.js `18+`
+- npm `9+`
+- Roblox Studio
+- VS Code
 
-By participating in this project, you agree to maintain a respectful and inclusive environment. Be kind, constructive, and professional in all interactions.
-
-## Getting Started
-
-1. **Fork the repository** on GitHub
-2. **Clone your fork** locally:
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/uxrCoder.git
-   cd uxrCoder
-   ```
-3. **Add the upstream remote**:
-   ```bash
-   git remote add upstream https://github.com/UXPLIMA/uxrCoder.git
-   ```
-
-## Development Setup
-
-### Prerequisites
-
-- Node.js 18+
-- npm 9+
-- Roblox Studio (for plugin testing)
-- VS Code (for extension testing)
-
-### Installation
+Install:
 
 ```bash
-# Install all dependencies
 npm run setup
-
-# Or install individually:
-cd server && npm install
-cd ../vscode-extension && npm install
 ```
 
-### Running in Development Mode
+Run:
 
 ```bash
-# Terminal 1: Start the server
-cd server && npm run dev
-
-# Terminal 2: Watch extension compilation
-cd vscode-extension && npm run watch
-
-# In VS Code: Press F5 to launch Extension Development Host
+npm run dev
 ```
 
-## Making Changes
+## 2. Branch and PR Flow
 
-1. **Create a feature branch**:
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
+1. Create branch from `main`.
+2. Implement scoped changes.
+3. Run validation commands.
+4. Update docs/changelog when behavior changes.
+5. Open PR with clear testing notes.
 
-2. **Make your changes** following our [coding standards](#coding-standards)
+## 3. Validation Commands
 
-3. **Test your changes**:
-   ```bash
-   npm test
-   npm run lint
-   ```
+Required before PR:
 
-4. **Commit your changes** using [conventional commits](#commit-messages)
-
-## Pull Request Process
-
-1. **Update documentation** if needed
-2. **Ensure all tests pass**
-3. **Update CHANGELOG.md** with your changes
-4. **Submit the PR** with a clear description
-5. **Wait for review** and address any feedback
-
-### PR Checklist
-
-- [ ] Code follows the project's style guidelines
-- [ ] Tests added/updated for new functionality
-- [ ] Documentation updated
-- [ ] CHANGELOG.md updated
-- [ ] All CI checks pass
-
-## Coding Standards
-
-### TypeScript (Server & Extension)
-
-- Use TypeScript strict mode
-- Prefer `const` over `let`
-- Use meaningful variable names
-- Add JSDoc comments for public APIs
-- Keep functions small and focused
-
-```typescript
-/**
- * Serializes a Roblox instance to JSON format.
- * @param instance - The instance to serialize
- * @returns Serialized instance data
- */
-export function serializeInstance(instance: RobloxInstance): SerializedInstance {
-    // Implementation
-}
+```bash
+npm --prefix server run lint
+npm --prefix server test -- --run
+npm --prefix server run build
+npm --prefix vscode-extension run lint
+npm run build
 ```
 
-### Lua (Roblox Plugin)
+Recommended:
 
-- Follow Roblox Lua style guide
-- Use descriptive function names
-- Comment complex logic
-- Handle errors gracefully
-
-```lua
---- Syncs the DataModel with the server.
--- @return boolean success
--- @return string? error message
-local function syncWithServer()
-    -- Implementation
-end
+```bash
+npm --prefix server run profile:large-tree
 ```
 
-## Commit Messages
+## 4. Coding Guidelines
 
-We use [Conventional Commits](https://www.conventionalcommits.org/):
+### TypeScript
+- Keep strict typing.
+- Prefer pure helpers for critical sync logic.
+- Return explicit conflict objects for recoverable failures.
+- Add concise comments only where logic is non-obvious.
 
-```
-<type>(<scope>): <description>
+### Lua (Plugin)
+- Keep mutation paths guarded (`pcall`, rollback-aware behavior).
+- Avoid silent failures in test/event flows.
+- Preserve deterministic naming and path semantics.
 
-[optional body]
+## 5. Docs Requirements
 
-[optional footer]
-```
+If your change affects behavior, update relevant docs:
+- `README.md` / `README.tr.md`
+- `docs/USAGE.md`
+- `docs/AGENT_API.md`
+- `docs/agent-test-harness.md`
+- `CHANGELOG.md`
 
-### Types
+## 6. Commit Style
 
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation changes
-- `style`: Code style changes (formatting, etc.)
-- `refactor`: Code refactoring
-- `test`: Adding or updating tests
-- `chore`: Maintenance tasks
+Use Conventional Commits:
+- `feat:`
+- `fix:`
+- `docs:`
+- `refactor:`
+- `test:`
+- `chore:`
 
-### Examples
+Examples:
+- `feat(server): add visual baseline assertion for screenshot artifacts`
+- `fix(plugin): include attempt metadata in test events`
 
-```
-feat(server): add WebSocket reconnection logic
-fix(plugin): resolve nil reference in serialization
-docs(readme): update installation instructions
-refactor(extension): simplify tree view provider
-```
+## 7. Bug Reports
 
-## Reporting Bugs
+Include:
+- reproducible steps
+- expected vs actual behavior
+- environment (OS, Node, Studio version)
+- logs and, if possible, exported debug bundle (`/agent/debug/export`)
 
-When reporting bugs, please include:
+## 8. Security
 
-1. **Description**: Clear description of the issue
-2. **Steps to Reproduce**: How to reproduce the bug
-3. **Expected Behavior**: What should happen
-4. **Actual Behavior**: What actually happens
-5. **Environment**: OS, Node.js version, Roblox Studio version
-6. **Logs**: Any relevant error messages
-
-## Suggesting Features
-
-Feature requests are welcome! Please include:
-
-1. **Use Case**: Why is this feature needed?
-2. **Proposed Solution**: How should it work?
-3. **Alternatives**: Any alternative approaches considered?
-
----
-
-Thank you for contributing!
+Please follow `SECURITY.md` for vulnerability reporting.

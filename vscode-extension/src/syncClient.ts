@@ -13,7 +13,15 @@
 
 import WebSocket from 'ws';
 import * as crypto from 'crypto';
-import type { RobloxInstance, SyncMessage, PropertyValue, CommandMessage, LogMessage } from './types';
+import type {
+    AgentPropertySchemaResponse,
+    CommandMessage,
+    LogMessage,
+    PropertyValue,
+    ReparentInstanceMessage,
+    RobloxInstance,
+    SyncMessage,
+} from './types';
 
 // =============================================================================
 // Types
@@ -76,6 +84,14 @@ export class SyncClient {
 
     /** Maximum delay between reconnection attempts (ms) */
     private readonly maxReconnectDelay = 30000;
+
+    /** Flag to suppress file watcher events during reparent */
+    private _isReparenting = false;
+
+    /** Check if a reparent operation is in progress */
+    get isReparenting(): boolean {
+        return this._isReparenting;
+    }
 
     /**
      * Create a new SyncClient.
@@ -388,7 +404,7 @@ export class SyncClient {
      */
     private removeInstance(path: string[]): void {
         console.log(`🗑️ Removing instance: ${path.join('.')}`);
-        
+
         if (path.length === 1) {
             // Root level removal
             const sizeBefore = this.instances.length;
@@ -538,6 +554,33 @@ export class SyncClient {
     }
 
     /**
+     * Reparent an instance.
+     * 
+     * @param path - Path to the instance to reparent
+     * @param newParentPath - Path to the new parent
+     */
+    reparentInstance(path: string[], newParentPath: string[]): void {
+        const message: ReparentInstanceMessage = {
+            type: 'reparent',
+            timestamp: Date.now(),
+            path,
+            newParentPath
+        };
+
+        // Suppress file watcher events during reparent to prevent echo-back
+        this._isReparenting = true;
+        setTimeout(() => {
+            this._isReparenting = false;
+        }, 3000);
+
+        // Note: We don't apply this locally immediately because reparenting
+        // involves complex tree manipulation. We wait for the server to process it
+        // and send back a verified update or full sync.
+
+        this.send(message);
+    }
+
+    /**
      * Send a command to the server (Play/Run/Stop).
      *
      * @param action - The command action
@@ -549,6 +592,33 @@ export class SyncClient {
             timestamp: Date.now(),
         };
         this.send(message);
+    }
+
+    /**
+     * Fetch server-side property schema for agent/property workflows.
+     *
+     * @param className - Optional class filter
+     * @returns Schema response or null if unavailable
+     */
+    async getPropertySchema(className?: string): Promise<AgentPropertySchemaResponse | null> {
+        const httpUrl = this.serverUrl.replace(/^ws/, 'http');
+
+        try {
+            const endpoint = new URL(`${httpUrl}/agent/schema/properties`);
+            if (typeof className === 'string' && className.trim().length > 0) {
+                endpoint.searchParams.set('className', className.trim());
+            }
+
+            const response = await fetch(endpoint.toString(), { method: 'GET' });
+            if (!response.ok) {
+                return null;
+            }
+
+            return await response.json() as AgentPropertySchemaResponse;
+        } catch (error) {
+            console.warn('Failed to fetch property schema:', error);
+            return null;
+        }
     }
 
     /**

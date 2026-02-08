@@ -1,13 +1,15 @@
 {
     "name": "@uxrcoder/server",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "uxrCoder local server for Roblox Studio ↔ VS Code synchronization",
     "main": "dist/server.js",
     "scripts": {
         "dev": "tsx watch src/server.ts",
         "build": "tsc",
         "start": "node dist/server.js",
-        "test": "vitest",
+        "test": "vitest --run",
+        "test:watch": "vitest",
+        "profile:large-tree": "tsx test/manual_profile_large_tree.ts",
         "lint": "eslint src --ext .ts",
         "lint:fix": "eslint src --ext .ts --fix",
         "typecheck": "tsc --noEmit"

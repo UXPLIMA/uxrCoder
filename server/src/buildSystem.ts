@@ -119,22 +119,21 @@ ${indent}\t<Y>${v.y}</Y>
 ${indent}</Vector2>`;
 
                 case 'CFrame':
+                    const cframeRotation = this.rotationMatrixFromOrientation(v.orientation);
                     return `\n${indent}<CoordinateFrame name="${name}">
 ${indent}\t<X>${v.position.x}</X>
 ${indent}\t<Y>${v.position.y}</Y>
 ${indent}\t<Z>${v.position.z}</Z>
-${indent}\t<R00>1</R00>
-${indent}\t<R01>0</R01>
-${indent}\t<R02>0</R02>
-${indent}\t<R10>0</R10>
-${indent}\t<R11>1</R11>
-${indent}\t<R12>0</R12>
-${indent}\t<R20>0</R20>
-${indent}\t<R21>0</R21>
-${indent}\t<R22>1</R22>
+${indent}\t<R00>${cframeRotation.r00}</R00>
+${indent}\t<R01>${cframeRotation.r01}</R01>
+${indent}\t<R02>${cframeRotation.r02}</R02>
+${indent}\t<R10>${cframeRotation.r10}</R10>
+${indent}\t<R11>${cframeRotation.r11}</R11>
+${indent}\t<R12>${cframeRotation.r12}</R12>
+${indent}\t<R20>${cframeRotation.r20}</R20>
+${indent}\t<R21>${cframeRotation.r21}</R21>
+${indent}\t<R22>${cframeRotation.r22}</R22>
 ${indent}</CoordinateFrame>`;
-                // TODO: Calculate rotation matrix from Euler angles (v.orientation)
-                // For now using identity matrix to avoid complex math in basic version
 
                 case 'UDim2':
                     return `\n${indent}<UDim2 name="${name}">
@@ -179,6 +178,74 @@ ${indent}</Rect2D>`;
         }
 
         return '';
+    }
+
+    /**
+     * Convert XYZ Euler orientation (degrees) into a CoordinateFrame rotation matrix.
+     */
+    private rotationMatrixFromOrientation(orientation: { x?: number; y?: number; z?: number } | undefined): {
+        r00: number;
+        r01: number;
+        r02: number;
+        r10: number;
+        r11: number;
+        r12: number;
+        r20: number;
+        r21: number;
+        r22: number;
+    } {
+        if (!orientation) {
+            return {
+                r00: 1, r01: 0, r02: 0,
+                r10: 0, r11: 1, r12: 0,
+                r20: 0, r21: 0, r22: 1,
+            };
+        }
+
+        const toRad = (degrees: number): number => (degrees * Math.PI) / 180;
+        const x = toRad(orientation.x ?? 0);
+        const y = toRad(orientation.y ?? 0);
+        const z = toRad(orientation.z ?? 0);
+
+        const cx = Math.cos(x);
+        const sx = Math.sin(x);
+        const cy = Math.cos(y);
+        const sy = Math.sin(y);
+        const cz = Math.cos(z);
+        const sz = Math.sin(z);
+
+        // XYZ Euler rotation matrix.
+        const r00 = cy * cz;
+        const r01 = -cy * sz;
+        const r02 = sy;
+        const r10 = cx * sz + cz * sx * sy;
+        const r11 = cx * cz - sx * sy * sz;
+        const r12 = -cy * sx;
+        const r20 = sx * sz - cx * cz * sy;
+        const r21 = cz * sx + cx * sy * sz;
+        const r22 = cx * cy;
+
+        return {
+            r00: this.normalizeRotationComponent(r00),
+            r01: this.normalizeRotationComponent(r01),
+            r02: this.normalizeRotationComponent(r02),
+            r10: this.normalizeRotationComponent(r10),
+            r11: this.normalizeRotationComponent(r11),
+            r12: this.normalizeRotationComponent(r12),
+            r20: this.normalizeRotationComponent(r20),
+            r21: this.normalizeRotationComponent(r21),
+            r22: this.normalizeRotationComponent(r22),
+        };
+    }
+
+    /**
+     * Keep XML rotation values compact and stable across platforms.
+     */
+    private normalizeRotationComponent(value: number): number {
+        if (Math.abs(value) < 1e-12) {
+            return 0;
+        }
+        return Number.parseFloat(value.toFixed(12));
     }
 
     /**

@@ -12,6 +12,7 @@
  */
 
 import * as vscode from 'vscode';
+import * as path from 'path';
 import type { LogMessage } from './types';
 import { RobloxExplorerProvider, RobloxTreeItem } from './treeView';
 import { SyncClient } from './syncClient';
@@ -48,6 +49,18 @@ let fileWatcher: vscode.FileSystemWatcher | undefined;
 /** Map to track files being synced from server to avoid loops */
 const syncingFromServer = new Map<string, boolean>();
 
+/** Clipboard for copy-paste operations */
+let clipboard: RobloxTreeItem[] = [];
+
+/** Roblox services that cannot be deleted or reparented */
+const PROTECTED_SERVICES = [
+    'Workspace', 'Lighting', 'ReplicatedFirst', 'ReplicatedStorage',
+    'ServerScriptService', 'ServerStorage', 'StarterGui', 'StarterPack',
+    'StarterPlayer', 'Teams', 'SoundService', 'LogService'
+];
+
+const LUA_PATH_SUFFIX = /(\.server|\.client)?\.lua$/;
+
 // =============================================================================
 // Extension Lifecycle
 // =============================================================================
@@ -69,6 +82,7 @@ export function activate(context: vscode.ExtensionContext): void {
     explorerProvider = new RobloxExplorerProvider(syncClient);
     const treeView = vscode.window.createTreeView('robloxExplorer', {
         treeDataProvider: explorerProvider,
+        dragAndDropController: explorerProvider,
         showCollapseAll: true,
         canSelectMany: true,
     });
@@ -179,8 +193,8 @@ function setupFileWatcher(context: vscode.ExtensionContext): void {
 
     // Handle file changes
     fileWatcher.onDidChange(async (uri) => {
-        // Skip if this change came from server
-        if (syncingFromServer.get(uri.fsPath)) {
+        // Skip if this change came from server or reparent is in progress
+        if (syncingFromServer.get(uri.fsPath) || syncClient.isReparenting) {
             return;
         }
 
@@ -191,8 +205,8 @@ function setupFileWatcher(context: vscode.ExtensionContext): void {
         if (!workspaceFolders) return;
 
         const workspaceRoot = workspaceFolders[0].uri.fsPath;
-        const relativePath = uri.fsPath.replace(workspaceRoot + '/', '').replace(/\.lua$/, '');
-        const path = relativePath.split('/');
+        const instancePath = filePathToInstancePath(uri.fsPath, workspaceRoot);
+        if (!instancePath) return;
 
         // Read the file content
         try {
@@ -200,8 +214,8 @@ function setupFileWatcher(context: vscode.ExtensionContext): void {
             const newSource = document.getText();
 
             // Update the Source property
-            syncClient.updateProperty(path, 'Source', newSource);
-            console.log(`✅ Synced ${path.join('.')} to Studio`);
+            syncClient.updateProperty(instancePath, 'Source', newSource);
+            console.log(`✅ Synced ${instancePath.join('.')} to Studio`);
         } catch (error) {
             console.error(`Failed to sync file: ${error}`);
         }
@@ -209,7 +223,7 @@ function setupFileWatcher(context: vscode.ExtensionContext): void {
 
     // Handle file deletion
     fileWatcher.onDidDelete((uri) => {
-        if (syncingFromServer.get(uri.fsPath)) {
+        if (syncingFromServer.get(uri.fsPath) || syncClient.isReparenting) {
             return;
         }
 
@@ -219,11 +233,11 @@ function setupFileWatcher(context: vscode.ExtensionContext): void {
         if (!workspaceFolders) return;
 
         const workspaceRoot = workspaceFolders[0].uri.fsPath;
-        const relativePath = uri.fsPath.replace(workspaceRoot + '/', '').replace(/\.lua$/, '');
-        const path = relativePath.split('/');
+        const instancePath = filePathToInstancePath(uri.fsPath, workspaceRoot);
+        if (!instancePath) return;
 
-        syncClient.deleteInstance(path);
-        console.log(`✅ Deleted ${path.join('.')} from Studio`);
+        syncClient.deleteInstance(instancePath);
+        console.log(`✅ Deleted ${instancePath.join('.')} from Studio`);
     });
 
     context.subscriptions.push(fileWatcher);
@@ -235,7 +249,6 @@ function setupFileWatcher(context: vscode.ExtensionContext): void {
  */
 async function updateOpenScriptDocuments(): Promise<void> {
     const fs = await import('fs');
-    const path = await import('path');
 
     // Get workspace root
     const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -251,8 +264,10 @@ async function updateOpenScriptDocuments(): Promise<void> {
         }
 
         // Get the instance path from file path
-        const relativePath = doc.uri.fsPath.replace(workspaceRoot + '/', '').replace(/\.lua$/, '');
-        const instancePath = relativePath.split('/');
+        const instancePath = filePathToInstancePath(doc.uri.fsPath, workspaceRoot);
+        if (!instancePath) {
+            continue;
+        }
 
         // Get the instance from sync client
         const instance = syncClient.getInstance(instancePath);
@@ -286,6 +301,25 @@ async function updateOpenScriptDocuments(): Promise<void> {
     }
 }
 
+/**
+ * Convert a workspace-local Lua file path to Roblox instance path.
+ */
+function filePathToInstancePath(filePath: string, workspaceRoot: string): string[] | null {
+    const relative = path.relative(workspaceRoot, filePath);
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+        return null;
+    }
+
+    const normalized = relative.split(path.sep).join('/');
+    if (!LUA_PATH_SUFFIX.test(normalized)) {
+        return null;
+    }
+
+    const withoutLuaExt = normalized.replace(LUA_PATH_SUFFIX, '');
+    const segments = withoutLuaExt.split('/').filter(Boolean);
+    return segments.length > 0 ? segments : null;
+}
+
 // =============================================================================
 // Command Registration
 // =============================================================================
@@ -311,6 +345,8 @@ function registerCommands(
         vscode.commands.registerCommand('robloxSync.delete', handleDelete),
         vscode.commands.registerCommand('robloxSync.rename', handleRename),
         vscode.commands.registerCommand('robloxSync.copyPath', handleCopyPath),
+        vscode.commands.registerCommand('robloxSync.copyInstance', handleCopyInstance),
+        vscode.commands.registerCommand('robloxSync.pasteInstance', handlePasteInstance),
         vscode.commands.registerCommand('robloxSync.openScript', handleOpenScript),
 
         // Debugging commands
@@ -486,22 +522,125 @@ async function handleInsertObject(item?: RobloxTreeItem, predefinedClassName?: s
 
 /**
  * Handle the delete command.
+ * Supports multi-select: VS Code passes (clickedItem, selectedItems) when canSelectMany is true.
  *
- * @param item - The tree item to delete
+ * @param item - The clicked tree item
+ * @param selectedItems - All selected tree items (provided by VS Code when multi-select)
  */
-async function handleDelete(item?: RobloxTreeItem): Promise<void> {
-    if (!item) return;
+async function handleDelete(item?: RobloxTreeItem, selectedItems?: RobloxTreeItem[]): Promise<void> {
+    // Use selectedItems if available (multi-select), otherwise fall back to single item
+    const items = selectedItems && selectedItems.length > 0 ? selectedItems : (item ? [item] : []);
+    if (items.length === 0) return;
+
+    // Filter out protected services
+    const protectedItems = items.filter(i => i.path.length === 1 && PROTECTED_SERVICES.includes(i.path[0]));
+    const deletableItems = items.filter(i => !(i.path.length === 1 && PROTECTED_SERVICES.includes(i.path[0])));
+
+    if (protectedItems.length > 0) {
+        const names = protectedItems.map(i => i.instance.name).join(', ');
+        vscode.window.showWarningMessage(`Cannot delete services: ${names}. Services are protected in Roblox.`);
+    }
+
+    if (deletableItems.length === 0) return;
+
+    // Confirmation
+    const message = deletableItems.length === 1
+        ? `Are you sure you want to delete "${deletableItems[0].instance.name}"?`
+        : `Are you sure you want to delete ${deletableItems.length} instances?`;
 
     const confirm = await vscode.window.showWarningMessage(
-        `Are you sure you want to delete "${item.instance.name}"?`,
+        message,
         { modal: true },
         'Delete'
     );
 
     if (confirm === 'Delete') {
-        syncClient.deleteInstance(item.path);
+        for (const delItem of deletableItems) {
+            syncClient.deleteInstance(delItem.path);
+        }
         explorerProvider.refresh();
-        vscode.window.showInformationMessage(`Deleted: ${item.instance.name}`);
+
+        const resultMsg = deletableItems.length === 1
+            ? `Deleted: ${deletableItems[0].instance.name}`
+            : `Deleted ${deletableItems.length} instances`;
+        vscode.window.showInformationMessage(resultMsg);
+    }
+}
+
+/**
+ * Handle the copy instance command.
+ * Copies selected instances to the internal clipboard for paste.
+ *
+ * @param item - The clicked tree item
+ * @param selectedItems - All selected tree items
+ */
+function handleCopyInstance(item?: RobloxTreeItem, selectedItems?: RobloxTreeItem[]): void {
+    const items = selectedItems && selectedItems.length > 0 ? selectedItems : (item ? [item] : []);
+    if (items.length === 0) return;
+
+    clipboard = [...items];
+    const names = items.map(i => i.instance.name).join(', ');
+    vscode.window.showInformationMessage(`Copied ${items.length === 1 ? `"${names}"` : `${items.length} instances`} to clipboard`);
+}
+
+/**
+ * Handle the paste instance command.
+ * Pastes copied instances under the target item.
+ *
+ * @param item - The target tree item to paste under
+ */
+async function handlePasteInstance(item?: RobloxTreeItem): Promise<void> {
+    if (!item) {
+        if (currentSelection) {
+            item = currentSelection;
+        } else {
+            vscode.window.showErrorMessage('Please select a target instance in the explorer to paste into.');
+            return;
+        }
+    }
+
+    if (clipboard.length === 0) {
+        vscode.window.showWarningMessage('Clipboard is empty. Copy instances first.');
+        return;
+    }
+
+    const targetPath = item.path;
+    let pastedCount = 0;
+
+    for (const clipItem of clipboard) {
+        const instance = syncClient.getInstance(clipItem.path);
+        if (!instance) continue;
+
+        // Generate unique name in target
+        const targetInstance = syncClient.getInstance(targetPath);
+        const siblings = targetInstance?.children || [];
+        let uniqueName = instance.name;
+        let counter = 2;
+        while (siblings.some(c => c.name === uniqueName)) {
+            uniqueName = `${instance.name}_${counter}`;
+            counter++;
+        }
+
+        syncClient.createInstance(targetPath, instance.className, uniqueName);
+
+        // If instance has Source property (script), also copy it
+        if (instance.properties.Source !== undefined) {
+            const newPath = [...targetPath, uniqueName];
+            // Small delay to ensure creation is processed before property update
+            setTimeout(() => {
+                syncClient.updateProperty(newPath, 'Source', instance.properties.Source);
+            }, 200);
+        }
+        pastedCount++;
+    }
+
+    explorerProvider.refresh();
+    if (pastedCount > 0) {
+        vscode.window.showInformationMessage(
+            pastedCount === 1
+                ? `Pasted "${clipboard[0].instance.name}" into "${item.instance.name}"`
+                : `Pasted ${pastedCount} instances into "${item.instance.name}"`
+        );
     }
 }
 
@@ -556,7 +695,7 @@ async function handleOpenScript(item?: RobloxTreeItem): Promise<void> {
     if (instance && instance.properties.Source !== undefined) {
         // Import modules upfront
         const fs = await import('fs');
-        const path = await import('path');
+        const nodePath = await import('path');
 
         // Get workspace folders
         let workspaceRoot: string;
@@ -564,8 +703,8 @@ async function handleOpenScript(item?: RobloxTreeItem): Promise<void> {
 
         if (!workspaceFolders || workspaceFolders.length === 0) {
             // Try to use the project's server/workspace folder as fallback
-            const projectRoot = path.dirname(path.dirname(__dirname));
-            const serverWorkspace = path.join(projectRoot, 'server', 'workspace');
+            const projectRoot = nodePath.dirname(nodePath.dirname(__dirname));
+            const serverWorkspace = nodePath.join(projectRoot, 'server', 'workspace');
 
             if (fs.existsSync(serverWorkspace)) {
                 workspaceRoot = serverWorkspace;
@@ -601,7 +740,7 @@ async function handleOpenScript(item?: RobloxTreeItem): Promise<void> {
 
         try {
             // Create directory structure if needed
-            const dir = path.dirname(filePath.fsPath);
+            const dir = nodePath.dirname(filePath.fsPath);
 
             if (!fs.existsSync(dir)) {
                 fs.mkdirSync(dir, { recursive: true });

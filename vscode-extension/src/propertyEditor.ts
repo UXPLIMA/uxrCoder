@@ -10,7 +10,7 @@
 
 import * as vscode from 'vscode';
 import { SyncClient } from './syncClient';
-import type { RobloxInstance, PropertyValue } from './types';
+import type { AgentClassPropertySchema, PropertyValue, RobloxInstance } from './types';
 import { RobloxTreeItem } from './treeView';
 
 /**
@@ -28,6 +28,10 @@ export class PropertyEditorProvider implements vscode.WebviewViewProvider {
 
     /** Currently displayed items */
     private _currentItems: RobloxTreeItem[] = [];
+    /** Server-provided property schema by class */
+    private _propertySchemaByClass: Record<string, AgentClassPropertySchema> = {};
+    /** Monotonic token to drop stale async schema responses */
+    private _schemaRequestToken = 0;
 
     /**
      * Create a new property editor provider.
@@ -77,6 +81,7 @@ export class PropertyEditorProvider implements vscode.WebviewViewProvider {
      */
     showProperties(items: RobloxTreeItem[]): void {
         this._currentItems = items;
+        void this.refreshPropertySchema();
         this.updateView();
     }
 
@@ -84,7 +89,7 @@ export class PropertyEditorProvider implements vscode.WebviewViewProvider {
      * Update the webview with current instance properties.
      */
     private updateView(): void {
-        if (!this._view || this._currentItems.length === 0) {
+        if (!this._view) {
             return;
         }
 
@@ -96,7 +101,41 @@ export class PropertyEditorProvider implements vscode.WebviewViewProvider {
         this._view.webview.postMessage({
             type: 'update',
             instances: instances,
+            propertySchemaByClass: this._propertySchemaByClass,
         });
+    }
+
+    /**
+     * Refresh class-level property schemas for currently selected instances.
+     */
+    private async refreshPropertySchema(): Promise<void> {
+        const requestToken = ++this._schemaRequestToken;
+
+        if (this._currentItems.length === 0) {
+            this._propertySchemaByClass = {};
+            this.updateView();
+            return;
+        }
+
+        const classNames = Array.from(new Set(
+            this._currentItems.map(item => item.instance.className).filter(Boolean),
+        ));
+        const nextSchema: Record<string, AgentClassPropertySchema> = {};
+
+        for (const className of classNames) {
+            const response = await this.syncClient.getPropertySchema(className);
+            const classSchema = response?.classes.find(entry => entry.className === className);
+            if (classSchema) {
+                nextSchema[className] = classSchema;
+            }
+        }
+
+        if (requestToken !== this._schemaRequestToken) {
+            return;
+        }
+
+        this._propertySchemaByClass = nextSchema;
+        this.updateView();
     }
 
     /**
@@ -280,6 +319,7 @@ export class PropertyEditorProvider implements vscode.WebviewViewProvider {
         const vscode = acquireVsCodeApi();
         let currentInstances = [];
         let commonProperties = {};
+        let propertySchemaByClass = {};
 
         // Handle messages from the extension
         window.addEventListener('message', event => {
@@ -287,6 +327,7 @@ export class PropertyEditorProvider implements vscode.WebviewViewProvider {
 
             if (message.type === 'update') {
                 currentInstances = message.instances || [];
+                propertySchemaByClass = message.propertySchemaByClass || {};
                 calculateCommonProperties();
                 renderProperties();
             }
@@ -334,9 +375,56 @@ export class PropertyEditorProvider implements vscode.WebviewViewProvider {
             }
             return false;
         }
+
+        function resolvePropertySchema(propertyName) {
+            if (currentInstances.length === 0) return null;
+
+            let merged = null;
+            for (const instance of currentInstances) {
+                const classSchema = propertySchemaByClass[instance.className];
+                if (!classSchema || !Array.isArray(classSchema.properties)) {
+                    return null;
+                }
+
+                const propSchema = classSchema.properties.find(p => p.name === propertyName);
+                if (!propSchema) {
+                    return null;
+                }
+
+                if (!merged) {
+                    merged = { ...propSchema };
+                } else {
+                    merged.writable = merged.writable && !!propSchema.writable;
+                    if (merged.kind !== propSchema.kind) {
+                        merged.kind = 'unknown';
+                    }
+                }
+            }
+
+            return merged;
+        }
+
+        function renderReadonlyValue(value) {
+            if (value === null || value === undefined) {
+                return 'nil';
+            }
+            if (typeof value === 'string') {
+                return escapeHtml(value);
+            }
+            if (typeof value === 'number' || typeof value === 'boolean') {
+                return String(value);
+            }
+            try {
+                return escapeHtml(JSON.stringify(value));
+            } catch (_error) {
+                return escapeHtml(String(value));
+            }
+        }
         
         function updateProperty(name, value) {
             if (currentInstances.length === 0) return;
+            const schema = resolvePropertySchema(name);
+            if (schema && schema.writable === false) return;
             
             // Optimistic update
             for (const inst of currentInstances) {
@@ -401,6 +489,30 @@ export class PropertyEditorProvider implements vscode.WebviewViewProvider {
             
             const newVal = { type: 'Color3', r, g, b };
             updateProperty(propName, newVal);
+        }
+
+        function updateNumberRange(propName, component, value) {
+            const baseVal = commonProperties[propName] === 'MIXED' ? currentInstances[0].properties[propName] : commonProperties[propName];
+            const newVal = { ...baseVal };
+            if (component === 'min') {
+                newVal.min = parseFloat(value);
+            } else {
+                newVal.max = parseFloat(value);
+            }
+            updateProperty(propName, newVal);
+        }
+
+        function updateEnum(propName, enumType, enumValue, rawInput) {
+            const input = String(rawInput || '').trim();
+            if (!input) return;
+
+            const enumName = input.includes('.') ? input.split('.').pop() : input;
+            updateProperty(propName, {
+                type: 'Enum',
+                enumType: enumType,
+                value: enumValue,
+                name: enumName
+            });
         }
 
         function renderProperties() {
@@ -468,6 +580,66 @@ export class PropertyEditorProvider implements vscode.WebviewViewProvider {
             content.innerHTML = html;
         }
 
+        function buildNumericInputAttributes(schema) {
+            if (!schema || !schema.numericConstraint) return 'step="any"';
+            const attrs = [];
+            const constraint = schema.numericConstraint;
+            if (typeof constraint.min === 'number') {
+                attrs.push('min="' + constraint.min + '"');
+            }
+            if (typeof constraint.max === 'number') {
+                attrs.push('max="' + constraint.max + '"');
+            }
+            const step = constraint.integer ? 1 : 'any';
+            attrs.push('step="' + step + '"');
+            return attrs.join(' ');
+        }
+
+        function buildStringInputAttributes(schema) {
+            if (!schema || !schema.stringConstraint) return '';
+            const attrs = [];
+            const constraint = schema.stringConstraint;
+            if (typeof constraint.minLength === 'number') {
+                attrs.push('minlength="' + constraint.minLength + '"');
+            }
+            if (typeof constraint.maxLength === 'number') {
+                attrs.push('maxlength="' + constraint.maxLength + '"');
+            }
+            if (typeof constraint.pattern === 'string' && constraint.pattern.length > 0) {
+                attrs.push('pattern="' + escapeAttribute(constraint.pattern) + '"');
+            }
+            return attrs.join(' ');
+        }
+
+        function buildSchemaTooltip(schema) {
+            if (!schema) return '';
+            const chunks = [];
+            if (schema.numericConstraint) {
+                const c = schema.numericConstraint;
+                const parts = [];
+                if (typeof c.min === 'number') parts.push('min=' + c.min);
+                if (typeof c.max === 'number') parts.push('max=' + c.max);
+                if (c.integer) parts.push('integer');
+                if (parts.length > 0) chunks.push('number(' + parts.join(', ') + ')');
+            }
+            if (schema.stringConstraint) {
+                const c = schema.stringConstraint;
+                const parts = [];
+                if (typeof c.minLength === 'number') parts.push('minLen=' + c.minLength);
+                if (typeof c.maxLength === 'number') parts.push('maxLen=' + c.maxLength);
+                if (c.nonEmpty) parts.push('nonEmpty');
+                if (parts.length > 0) chunks.push('string(' + parts.join(', ') + ')');
+            }
+            if (schema.enumConstraint && Array.isArray(schema.enumConstraint.allowedNames) && schema.enumConstraint.allowedNames.length > 0) {
+                chunks.push('enum options: ' + schema.enumConstraint.allowedNames.slice(0, 5).join(', '));
+            }
+            return chunks.join(' | ');
+        }
+
+        function makeDomId(rawValue) {
+            return String(rawValue || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+        }
+
         function renderInput(key, value) {
             if (value === 'MIXED') {
                  return '<div class="mixed-value">&lt;Multiple Values&gt;</div>';
@@ -477,17 +649,29 @@ export class PropertyEditorProvider implements vscode.WebviewViewProvider {
                 return '<span style="opacity: 0.5">nil</span>';
             }
 
+            const schema = resolvePropertySchema(key);
+            const schemaTooltip = buildSchemaTooltip(schema);
+            if (schema && schema.writable === false) {
+                return '<span style="opacity: 0.7; font-size: 11px">' + renderReadonlyValue(value)
+                    + ' <span style="opacity:0.6">(Read-only: schema)</span></span>';
+            }
+
             if (typeof value === 'boolean') {
                 const checked = value ? 'checked' : '';
-                return '<input type="checkbox" ' + checked + ' onchange="updateProperty(\\'' + key + '\\', this.checked)">';
+                const title = schemaTooltip ? ' title="' + escapeAttribute(schemaTooltip) + '"' : '';
+                return '<input type="checkbox" ' + checked + title + ' onchange="updateProperty(\\'' + key + '\\', this.checked)">';
             }
 
             if (typeof value === 'number') {
-                return '<input type="number" step="any" value="' + value + '" onchange="updateProperty(\\'' + key + '\\', parseFloat(this.value))">';
+                const numericAttrs = buildNumericInputAttributes(schema);
+                const title = schemaTooltip ? ' title="' + escapeAttribute(schemaTooltip) + '"' : '';
+                return '<input type="number" ' + numericAttrs + ' value="' + value + '"' + title + ' onchange="updateProperty(\\'' + key + '\\', parseFloat(this.value))">';
             }
 
             if (typeof value === 'string') {
-                return '<input type="text" value="' + escapeHtml(value) + '" onchange="updateProperty(\\'' + key + '\\', this.value)">';
+                const stringAttrs = buildStringInputAttributes(schema);
+                const title = schemaTooltip ? ' title="' + escapeAttribute(schemaTooltip) + '"' : '';
+                return '<input type="text" ' + stringAttrs + ' value="' + escapeHtml(value) + '"' + title + ' onchange="updateProperty(\\'' + key + '\\', this.value)">';
             }
 
             if (typeof value === 'object') {
@@ -541,6 +725,47 @@ export class PropertyEditorProvider implements vscode.WebviewViewProvider {
                            'Pos: ' + pos.x.toFixed(2) + ', ' + pos.y.toFixed(2) + ', ' + pos.z.toFixed(2) + 
                            ' <span style="opacity:0.6">(Read-only)</span></div>';
                 }
+
+                if (value.type === 'NumberRange') {
+                    return '<div class="vector-inputs">' +
+                        '<input type="number" step="any" value="' + value.min + '" placeholder="Min" onchange="updateNumberRange(\\'' + key + '\\', \\'min\\', this.value)">' +
+                        '<input type="number" step="any" value="' + value.max + '" placeholder="Max" onchange="updateNumberRange(\\'' + key + '\\', \\'max\\', this.value)">' +
+                        '</div>';
+                }
+
+                if (value.type === 'Enum') {
+                    const enumType = escapeHtml(value.enumType || '');
+                    const enumName = escapeHtml(value.name || '');
+                    const display = enumType ? (enumType + '.' + enumName) : enumName;
+                    const enumValue = typeof value.value === 'number' ? value.value : 0;
+                    const allowedNames = schema && schema.enumConstraint && Array.isArray(schema.enumConstraint.allowedNames)
+                        ? schema.enumConstraint.allowedNames
+                        : [];
+                    const title = schemaTooltip ? ' title="' + escapeAttribute(schemaTooltip) + '"' : '';
+                    if (allowedNames.length > 0) {
+                        const listId = 'enum_' + makeDomId(key + '_' + enumType);
+                        let options = '';
+                        for (const optionName of allowedNames.slice(0, 200)) {
+                            const optionDisplay = enumType ? enumType + '.' + optionName : optionName;
+                            options += '<option value="' + escapeHtml(optionDisplay) + '"></option>';
+                        }
+                        return '<div style="display:flex; flex-direction:column; gap:2px; width:100%">' +
+                            '<input type="text" list="' + listId + '" value="' + display + '"' + title + ' onchange="updateEnum(\\'' + key + '\\', \\''
+                            + enumType + '\\', ' + enumValue + ', this.value)">' +
+                            '<datalist id="' + listId + '">' + options + '</datalist>' +
+                            '</div>';
+                    }
+                    return '<input type="text" value="' + display + '"' + title + ' onchange="updateEnum(\\'' + key + '\\', \\''
+                        + enumType + '\\', ' + enumValue + ', this.value)">';
+                }
+
+                if (value.type === 'InstanceRef') {
+                    return '<span style="opacity: 0.7; font-size: 11px">' + escapeHtml(value.path || '') + ' <span style="opacity:0.6">(Read-only)</span></span>';
+                }
+
+                if (value.type === 'Unsupported') {
+                    return '<span style="opacity: 0.7; font-size: 11px">' + escapeHtml(value.robloxType || 'Unsupported') + ': ' + escapeHtml(String(value.value || '')) + '</span>';
+                }
                 
                 // Read-only fallback for other complex types
                 return '<span style="opacity: 0.7; font-size: 11px">' + JSON.stringify(value) + '</span>';
@@ -553,6 +778,13 @@ export class PropertyEditorProvider implements vscode.WebviewViewProvider {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        function escapeAttribute(text) {
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;');
         }
     </script>
 </body>
