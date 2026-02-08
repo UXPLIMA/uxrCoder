@@ -32,7 +32,7 @@ jobs:
         run: npm --prefix server run lint
 
       - name: Test
-        run: npm --prefix server test -- --run
+        run: npm --prefix server test
 
       - name: Build
         run: npm --prefix server run build
@@ -86,7 +86,7 @@ jobs:
       - name: Build Server
         run: |
           npm --prefix server run lint
-          npm --prefix server test -- --run
+          npm --prefix server test
           npm --prefix server run build
 
       - name: Build Extension
