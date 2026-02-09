@@ -157,6 +157,12 @@ export interface HealthResponse {
     timestamp: number;
     version?: string;
     instanceCount?: number;
+    agent?: {
+        capabilitiesEndpoint: string;
+        bootstrapEndpoint?: string;
+        snapshotEndpoint: string;
+        schemaEndpoint: string;
+    };
 }
 
 /**

@@ -58,12 +58,15 @@ describe('buildAgentSnapshotResponse', () => {
         const byId = new Map(snapshot.instances.map(instance => [instance.id, instance]));
         expect(byId.get('workspace-1')?.parentId).toBeNull();
         expect(byId.get('workspace-1')?.childIds).toEqual(['folder-a']);
+        expect(byId.get('workspace-1')?.pathString).toBe('Workspace');
 
         expect(byId.get('folder-a')?.parentId).toBe('workspace-1');
         expect(byId.get('folder-a')?.childIds).toEqual(['part-1']);
+        expect(byId.get('folder-a')?.pathString).toBe('Workspace.FolderA');
 
         expect(byId.get('part-1')?.parentId).toBe('folder-a');
         expect(byId.get('part-1')?.childIds).toEqual([]);
+        expect(byId.get('part-1')?.pathString).toBe('Workspace.FolderA.Part1');
     });
 
     it('sets parentId to null when parent path is missing from indexed set', () => {
@@ -83,5 +86,6 @@ describe('buildAgentSnapshotResponse', () => {
         expect(snapshot.instances).toHaveLength(1);
         expect(snapshot.instances[0].id).toBe('orphan');
         expect(snapshot.instances[0].parentId).toBeNull();
+        expect(snapshot.instances[0].pathString).toBe('Workspace.Missing.Orphan');
     });
 });

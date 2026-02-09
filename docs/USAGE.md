@@ -41,12 +41,13 @@ Read schema from:
 
 Typical reliable loop for agents:
 
-1. Read snapshot:
+1. Bootstrap in one call:
+```http
+GET /agent/bootstrap
+```
+2. Fallback if bootstrap excludes details:
 ```http
 GET /agent/snapshot
-```
-2. Optionally read schema:
-```http
 GET /agent/schema/properties
 ```
 3. Submit command(s):
@@ -56,6 +57,10 @@ POST /agent/commands
 ```
 4. Handle `conflict` payloads (`not_found`, `locked`, `revision_mismatch`, `validation_failed`).
 5. Retry with updated revision/snapshot when needed.
+
+Snapshot parsing note:
+- `path` is array-form
+- `pathString` is dot-separated string-form for easy filtering
 
 ## 5. Autonomous Test Workflow
 
@@ -68,6 +73,10 @@ Observe:
 - `GET /agent/tests`
 - `GET /agent/tests/:id`
 - `GET /agent/tests/metrics`
+
+Response parsing note:
+- read top-level `id` and `status` first
+- fallback to `run.id` and `run.status` for compatibility
 
 Control:
 - `POST /agent/tests/:id/abort`

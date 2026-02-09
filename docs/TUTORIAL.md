@@ -3,9 +3,10 @@
 This tutorial walks through a complete uxrCoder flow:
 1. setup
 2. sync verification
-3. agent command execution
-4. autonomous test run
-5. debug bundle export
+3. capability discovery
+4. agent command execution
+5. autonomous test run
+6. debug bundle export
 
 ## Step 1: Setup
 
@@ -36,16 +37,30 @@ Expected:
 - `status: "ok"`
 - `instanceCount > 0`
 
-## Step 3: Read Snapshot and Schema
+## Step 3: Discover Capabilities
 
 ```bash
-curl http://127.0.0.1:34872/agent/snapshot
+curl http://127.0.0.1:34872/agent/bootstrap
+```
+
+Use this output as the source of truth for:
+- command ops
+- test step types
+- response field compatibility
+
+## Step 4: Read Snapshot and Schema
+
+```bash
+curl "http://127.0.0.1:34872/agent/snapshot"
 curl "http://127.0.0.1:34872/agent/schema/properties?className=Part"
 ```
 
 Use snapshot IDs for deterministic target selection.
+Notes:
+- `path` is array-form
+- `pathString` is dot-form and useful for quick filtering
 
-## Step 4: Create and Update via Agent API
+## Step 5: Create and Update via Agent API
 
 Create a folder under `ReplicatedStorage` (replace parent target by your snapshot data):
 
@@ -77,7 +92,7 @@ curl -X POST http://127.0.0.1:34872/agent/command \
   }'
 ```
 
-## Step 5: Run Autonomous Test
+## Step 6: Run Autonomous Test
 
 ```bash
 curl -X POST http://127.0.0.1:34872/agent/tests/run \
@@ -103,7 +118,13 @@ Poll latest runs:
 curl http://127.0.0.1:34872/agent/tests
 ```
 
-## Step 6: Read Report and Artifacts
+Then use top-level `id` (or fallback `run.id`) from run response:
+
+```bash
+curl http://127.0.0.1:34872/agent/tests/<runId>
+```
+
+## Step 7: Read Report and Artifacts
 
 Replace `<runId>`:
 
@@ -112,7 +133,7 @@ curl http://127.0.0.1:34872/agent/tests/<runId>/report
 curl http://127.0.0.1:34872/agent/tests/<runId>/artifacts
 ```
 
-## Step 7: Export Debug Bundle
+## Step 8: Export Debug Bundle
 
 ```bash
 curl -X POST http://127.0.0.1:34872/agent/debug/export \
@@ -123,13 +144,13 @@ curl -X POST http://127.0.0.1:34872/agent/debug/export \
 Output is persisted under:
 - `workspace/.uxr-debug/`
 
-## Step 8: Profile Hotpaths (Optional)
+## Step 9: Profile Hotpaths (Optional)
 
 ```bash
 curl "http://127.0.0.1:34872/agent/debug/profile?iterations=5&sampleSize=5000&includeSchema=true"
 ```
 
-## Step 9: Local Release Validation
+## Step 10: Local Release Validation
 
 ```bash
 npm --prefix server test -- --run

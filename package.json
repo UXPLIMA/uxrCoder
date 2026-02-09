@@ -13,6 +13,8 @@
         "setup:server": "cd server && npm install",
         "setup:extension": "cd vscode-extension && npm install",
         "dev": "cd server && npm run dev",
+        "agent:init": "node scripts/agent-init.mjs",
+        "agent:init:force": "node scripts/agent-init.mjs --force",
         "build": "npm run build:server && npm run build:extension",
         "build:server": "cd server && npm run build",
         "build:extension": "cd vscode-extension && npm run compile",

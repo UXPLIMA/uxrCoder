@@ -35,6 +35,7 @@ It is designed for:
 - Reparent/rename consistency with stable `id -> path` indexing.
 
 ### 2) Agent Control Plane
+- Capabilities bootstrap API: `GET /agent/capabilities`.
 - Snapshot API: `GET /agent/snapshot`.
 - Property schema API: `GET /agent/schema/properties`.
 - Command APIs: `POST /agent/command`, `POST /agent/commands`.
@@ -83,6 +84,22 @@ npm run dev
 curl http://127.0.0.1:34872/health
 ```
 
+## AI Agent Onboarding (Fastest Path)
+
+1. Generate `AGENTS.md` for your game root:
+```bash
+npm run agent:init -- --project /path/to/MyGame --force
+```
+
+2. In your AI chat, start with:
+```text
+Read AGENTS.md and execute exactly that workflow.
+```
+
+Notes:
+- The template starts with `GET /agent/bootstrap` for one-shot discovery.
+- This removes guesswork around `path` format and test response fields.
+
 ## Documentation
 
 - Installation: `docs/INSTALLATION.md`
@@ -90,6 +107,9 @@ curl http://127.0.0.1:34872/health
 - Configuration reference: `docs/CONFIGURATION.md`
 - Architecture: `docs/ARCHITECTURE.md`
 - Agent API reference: `docs/AGENT_API.md`
+- AI quickstart (EN): `docs/AI_QUICKSTART.md`
+- AI quickstart (TR): `docs/AI_QUICKSTART.tr.md`
+- AGENTS template: `docs/AGENTS_TEMPLATE.md`
 - Agent test harness guide: `docs/agent-test-harness.md`
 - End-to-end tutorial (EN): `docs/TUTORIAL.md`
 - End-to-end tutorial (TR): `docs/TUTORIAL.tr.md`

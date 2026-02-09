@@ -39,6 +39,7 @@ export function buildAgentSnapshotResponse(
             className: instance.className,
             name: instance.name,
             path,
+            pathString: path.join('.'),
             parentId,
             childIds,
             properties: instance.properties,

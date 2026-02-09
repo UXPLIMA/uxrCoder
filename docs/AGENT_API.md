@@ -10,6 +10,14 @@ This reference focuses on endpoints intended for AI agents and automation client
 - Idempotency key (optional): header `x-idempotency-key`
 - Optimistic concurrency (optional): body field `baseRevision`
 
+Recommended call order for generic agents:
+1. `GET /health`
+2. `GET /agent/bootstrap`
+3. Fallback: `GET /agent/snapshot` + `GET /agent/schema/properties` (if not included in bootstrap)
+5. `POST /agent/commands`
+6. `POST /agent/tests/run`
+7. `GET /agent/tests/:id` until final status
+
 Conflict reasons:
 - `not_found`
 - `locked`
@@ -18,13 +26,40 @@ Conflict reasons:
 
 ## 1. Snapshot and Schema
 
+### `GET /agent/bootstrap`
+One-shot bootstrap for agents. Returns:
+- `health`
+- `capabilities`
+- `snapshot` (default included)
+- `schema` (default included)
+
+Query:
+- `includeSnapshot` (`true|false`, default `true`)
+- `includeSchema` (`true|false`, default `true`)
+- `className` (optional schema filter)
+
+### `GET /agent/capabilities`
+Returns compact machine-readable bootstrap metadata for generic agents.
+
+Use this as the first call when an agent does not yet know uxrCoder conventions.
+
+Includes:
+- quickstart order
+- command ops
+- test step types
+- response field compatibility for tests endpoints
+
 ### `GET /agent/snapshot`
 Returns deterministic indexed view of the current DataModel.
 
 Response shape:
 - `revision`
 - `generatedAt`
-- `instances[]` with `{ id, className, name, path, parentId, childIds, properties }`
+- `instances[]` with `{ id, className, name, path, pathString, parentId, childIds, properties }`
+
+Notes:
+- `path` is array-form (`["ReplicatedStorage","Folder"]`)
+- `pathString` is string-form (`"ReplicatedStorage.Folder"`) for simpler filtering in generic agents
 
 ### `GET /agent/schema/properties`
 Returns class/property metadata derived from current snapshot values.
@@ -127,11 +162,27 @@ Body:
 }
 ```
 
+Response compatibility:
+- `success`
+- `id` (top-level run id)
+- `status` (top-level run status)
+- `run` (full run object)
+
 ### `GET /agent/tests`
 List recent runs.
 
+Response compatibility:
+- `runs` (primary list)
+- `items` (alias of `runs` for generic clients)
+
 ### `GET /agent/tests/:id`
 Get one run.
+
+Response compatibility:
+- `success`
+- `id` (top-level)
+- `status` (top-level)
+- `run` (full run object)
 
 ### `POST /agent/tests/:id/abort`
 Abort queued/running run.
@@ -202,6 +253,12 @@ Still used by plugin/editor bridge:
 - `POST /sync/delta`
 - `GET /changes`
 - `POST /changes/confirm`
+
+`GET /health` also includes lightweight agent discovery hints:
+- `agent.capabilitiesEndpoint`
+- `agent.bootstrapEndpoint`
+- `agent.snapshotEndpoint`
+- `agent.schemaEndpoint`
 
 Additional utility endpoints:
 - `POST /build/:format`

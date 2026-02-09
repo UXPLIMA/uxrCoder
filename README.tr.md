@@ -34,6 +34,7 @@ Hedef kullanım:
 - Reparent/rename sonrası stabil `id -> path` çözümleme.
 
 ### 2) Agent Control Plane
+- Yetenek keşif API'si: `GET /agent/capabilities`
 - Snapshot API: `GET /agent/snapshot`
 - Property schema API: `GET /agent/schema/properties`
 - Command API: `POST /agent/command`, `POST /agent/commands`
@@ -82,6 +83,22 @@ npm run dev
 curl http://127.0.0.1:34872/health
 ```
 
+## AI Agent Başlangıç (En Kısa Yol)
+
+1. Oyun kökü için `AGENTS.md` üret:
+```bash
+npm run agent:init -- --project /path/to/MyGame --force
+```
+
+2. AI sohbetine şunu yaz:
+```text
+AGENTS.md dosyasını oku ve akışı aynen uygula.
+```
+
+Notlar:
+- Şablon ilk adımda `GET /agent/bootstrap` çağrısını zorunlu kılar.
+- Böylece `path` formatı ve test response alanları tahmin edilmez, doğrudan keşfedilir.
+
 ## Dokümantasyon
 
 - Kurulum: `docs/INSTALLATION.md`
@@ -89,6 +106,9 @@ curl http://127.0.0.1:34872/health
 - Konfigürasyon referansı: `docs/CONFIGURATION.md`
 - Mimari: `docs/ARCHITECTURE.md`
 - Agent API referansı: `docs/AGENT_API.md`
+- AI quickstart (EN): `docs/AI_QUICKSTART.md`
+- AI quickstart (TR): `docs/AI_QUICKSTART.tr.md`
+- AGENTS şablonu: `docs/AGENTS_TEMPLATE.md`
 - Agent test harness rehberi: `docs/agent-test-harness.md`
 - Uçtan uca tutorial (EN): `docs/TUTORIAL.md`
 - Uçtan uca tutorial (TR): `docs/TUTORIAL.tr.md`

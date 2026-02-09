@@ -3,9 +3,10 @@
 Bu tutorial, uxrCoder ile tam bir akışı gösterir:
 1. kurulum
 2. sync doğrulama
-3. agent command çalıştırma
-4. otonom test run
-5. debug bundle export
+3. capability keşfi
+4. agent command çalıştırma
+5. otonom test run
+6. debug bundle export
 
 ## Adım 1: Kurulum
 
@@ -36,16 +37,30 @@ Beklenen:
 - `status: "ok"`
 - `instanceCount > 0`
 
-## Adım 3: Snapshot ve Schema Oku
+## Adım 3: Capability Keşfi
 
 ```bash
-curl http://127.0.0.1:34872/agent/snapshot
+curl http://127.0.0.1:34872/agent/bootstrap
+```
+
+Bu çıktıyı şu konularda tek kaynak kabul et:
+- command operasyonları
+- test step tipleri
+- response field uyumluluğu
+
+## Adım 4: Snapshot ve Schema Oku
+
+```bash
+curl "http://127.0.0.1:34872/agent/snapshot"
 curl "http://127.0.0.1:34872/agent/schema/properties?className=Part"
 ```
 
 Deterministik hedefleme için snapshot `id` değerlerini kullan.
+Not:
+- `path` dizi formatındadır
+- `pathString` nokta formatındadır ve filtreleme için pratiktir
 
-## Adım 4: Agent API ile Create/Rename
+## Adım 5: Agent API ile Create/Rename
 
 `ReplicatedStorage` altına klasör oluştur:
 
@@ -77,7 +92,7 @@ curl -X POST http://127.0.0.1:34872/agent/command \
   }'
 ```
 
-## Adım 5: Otonom Test Çalıştır
+## Adım 6: Otonom Test Çalıştır
 
 ```bash
 curl -X POST http://127.0.0.1:34872/agent/tests/run \
@@ -103,7 +118,13 @@ Run listesini izle:
 curl http://127.0.0.1:34872/agent/tests
 ```
 
-## Adım 6: Report ve Artifact Oku
+Sonrasında run cevabındaki top-level `id` (fallback: `run.id`) ile detay çek:
+
+```bash
+curl http://127.0.0.1:34872/agent/tests/<runId>
+```
+
+## Adım 7: Report ve Artifact Oku
 
 `<runId>` yerine gerçek id koy:
 
@@ -112,7 +133,7 @@ curl http://127.0.0.1:34872/agent/tests/<runId>/report
 curl http://127.0.0.1:34872/agent/tests/<runId>/artifacts
 ```
 
-## Adım 7: Debug Bundle Export
+## Adım 8: Debug Bundle Export
 
 ```bash
 curl -X POST http://127.0.0.1:34872/agent/debug/export \
@@ -123,13 +144,13 @@ curl -X POST http://127.0.0.1:34872/agent/debug/export \
 Çıktı dizini:
 - `workspace/.uxr-debug/`
 
-## Adım 8: Profil (Opsiyonel)
+## Adım 9: Profil (Opsiyonel)
 
 ```bash
 curl "http://127.0.0.1:34872/agent/debug/profile?iterations=5&sampleSize=5000&includeSchema=true"
 ```
 
-## Adım 9: Release Öncesi Doğrulama
+## Adım 10: Release Öncesi Doğrulama
 
 ```bash
 npm --prefix server test -- --run

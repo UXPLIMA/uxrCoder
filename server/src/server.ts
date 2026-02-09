@@ -71,6 +71,7 @@ const config: ServerConfig = {
     syncInterval: parseInt(process.env.SYNC_INTERVAL || '100', 10),
     workspacePath: process.env.WORKSPACE_PATH || process.cwd() + '/workspace',
 };
+const SERVER_VERSION = '1.1.0';
 
 // =============================================================================
 // Server Setup
@@ -1068,6 +1069,113 @@ function toApiTestRun(
     };
 }
 
+function buildTestRunEnvelope(run: ReturnType<typeof toApiTestRun> | null): {
+    id: string | null;
+    status: string | null;
+    run: ReturnType<typeof toApiTestRun> | null;
+} {
+    return {
+        id: run?.id ?? null,
+        status: run?.status ?? null,
+        run,
+    };
+}
+
+function parseOptionalBooleanQuery(value: unknown, defaultValue: boolean): boolean {
+    if (typeof value === 'boolean') {
+        return value;
+    }
+    if (typeof value !== 'string') {
+        return defaultValue;
+    }
+
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1' || normalized === 'yes') {
+        return true;
+    }
+    if (normalized === 'false' || normalized === '0' || normalized === 'no') {
+        return false;
+    }
+    return defaultValue;
+}
+
+function resolvePublicBaseUrl(): string {
+    const host = config.host === '0.0.0.0' ? '127.0.0.1' : config.host;
+    return `http://${host}:${config.port}`;
+}
+
+function buildHealthResponse(): HealthResponse {
+    const instances = syncEngine.getAllInstances();
+    return {
+        status: 'ok',
+        timestamp: Date.now(),
+        version: SERVER_VERSION,
+        instanceCount: instances.length,
+        agent: {
+            capabilitiesEndpoint: '/agent/capabilities',
+            bootstrapEndpoint: '/agent/bootstrap',
+            snapshotEndpoint: '/agent/snapshot',
+            schemaEndpoint: '/agent/schema/properties',
+        },
+    };
+}
+
+function buildAgentCapabilitiesManifest(): Record<string, unknown> {
+    return {
+        success: true,
+        version: 'uxr-agent-capabilities/v1',
+        baseUrl: resolvePublicBaseUrl(),
+        bootstrapEndpoint: '/agent/bootstrap',
+        bootstrapDefaults: {
+            includeSnapshot: true,
+            includeSchema: true,
+        },
+        quickstart: [
+            'GET /health',
+            'GET /agent/bootstrap',
+            'POST /agent/commands',
+            'POST /agent/tests/run',
+            'GET /agent/tests/:id (poll until final status)',
+        ],
+        snapshot: {
+            pathFormats: ['array', 'string'],
+            fields: ['id', 'className', 'name', 'path', 'pathString', 'parentId', 'childIds', 'properties'],
+        },
+        commands: {
+            single: '/agent/command',
+            batch: '/agent/commands',
+            ops: ['create', 'update', 'rename', 'delete', 'reparent'],
+            transactionalField: 'transactional',
+            conflictReasons: ['not_found', 'locked', 'revision_mismatch', 'validation_failed'],
+        },
+        tests: {
+            runEndpoint: '/agent/tests/run',
+            readEndpoint: '/agent/tests/:id',
+            listEndpoint: '/agent/tests',
+            finalStatuses: ['passed', 'failed', 'aborted', 'error'],
+            responseFields: {
+                run: ['success', 'id', 'status', 'run'],
+                read: ['success', 'id', 'status', 'run'],
+                list: ['success', 'runs', 'items', 'activeRunId'],
+            },
+            stepTypes: [
+                'wait',
+                'assertExists',
+                'assertNotExists',
+                'assertProperty',
+                'setProperty',
+                'createInstance',
+                'destroyInstance',
+                'renameInstance',
+                'reparentInstance',
+                'harnessAction',
+                'captureScreenshot',
+                'captureArtifact',
+            ],
+        },
+    };
+}
+
 function normalizeVisualBaselineMode(value: unknown): VisualBaselineMode {
     if (typeof value !== 'string') {
         return 'assert';
@@ -1450,14 +1558,7 @@ function dispatchNextAgentTestRun(): void {
  * Used by clients to verify server availability.
  */
 app.get('/health', (_req: Request, res: Response) => {
-    const instances = syncEngine.getAllInstances();
-    const response: HealthResponse = {
-        status: 'ok',
-        timestamp: Date.now(),
-        version: '1.0.0',
-        instanceCount: instances.length,  // Add instance count for plugin resync detection
-    };
-    res.json(response);
+    res.json(buildHealthResponse());
 });
 
 /**
@@ -1601,6 +1702,62 @@ app.get('/agent/schema/properties', (req: Request, res: Response) => {
 });
 
 /**
+ * Machine-readable capabilities manifest for generic agents.
+ * This is intentionally compact so agents can bootstrap without scanning long docs.
+ */
+app.get('/agent/capabilities', (_req: Request, res: Response) => {
+    res.json(buildAgentCapabilitiesManifest());
+});
+
+/**
+ * One-shot bootstrap endpoint for generic agents.
+ * Returns health + capabilities and optionally full snapshot/schema in one request.
+ */
+app.get('/agent/bootstrap', (req: Request, res: Response) => {
+    const includeSnapshot = parseOptionalBooleanQuery(req.query.includeSnapshot, true);
+    const includeSchema = parseOptionalBooleanQuery(req.query.includeSchema, true);
+    const classNameFilter = typeof req.query.className === 'string'
+        ? req.query.className.trim()
+        : undefined;
+
+    const payload: Record<string, unknown> = {
+        success: true,
+        version: 'uxr-agent-bootstrap/v1',
+        baseUrl: resolvePublicBaseUrl(),
+        health: buildHealthResponse(),
+        capabilities: buildAgentCapabilitiesManifest(),
+        defaults: {
+            includeSnapshot: true,
+            includeSchema: true,
+        },
+    };
+
+    if (includeSnapshot) {
+        const snapshot = agentDerivedCache.getSnapshot();
+        payload.snapshot = snapshot;
+        payload.snapshotSummary = {
+            revision: snapshot.revision,
+            generatedAt: snapshot.generatedAt,
+            instanceCount: snapshot.instances.length,
+        };
+    }
+
+    if (includeSchema) {
+        const schema = agentDerivedCache.getSchema(classNameFilter);
+        payload.schema = schema;
+        payload.schemaSummary = {
+            revision: schema.revision,
+            generatedAt: schema.generatedAt,
+            schemaVersion: schema.schemaVersion,
+            classCount: schema.classes.length,
+            classNameFilter: classNameFilter ?? null,
+        };
+    }
+
+    res.json(payload);
+});
+
+/**
  * Execute a single agent command.
  */
 app.post('/agent/command', (req: Request, res: Response) => {
@@ -1682,10 +1839,11 @@ app.post('/agent/tests/run', (req: Request, res: Response) => {
 
     const queuedPosition = agentTestManager.getQueuedPosition(run.id);
     const latestRun = agentTestManager.getRun(run.id) ?? run;
+    const apiRun = toApiTestRun(latestRun);
 
     res.status(202).json({
         success: true,
-        run: toApiTestRun(latestRun),
+        ...buildTestRunEnvelope(apiRun),
         safety: normalized.scenario.safety,
         runtime: normalized.scenario.runtime,
         queuedPosition,
@@ -1902,9 +2060,10 @@ app.get('/agent/tests/:id', (req: Request, res: Response) => {
         return;
     }
 
+    const apiRun = toApiTestRun(run);
     res.json({
         success: true,
-        run: toApiTestRun(run),
+        ...buildTestRunEnvelope(apiRun),
     });
 });
 
@@ -1916,9 +2075,11 @@ app.get('/agent/tests', (req: Request, res: Response) => {
     const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 50;
     const runs = agentTestManager.getRuns(limit);
 
+    const apiRuns = runs.map(toApiTestRun);
     res.json({
         success: true,
-        runs: runs.map(toApiTestRun),
+        runs: apiRuns,
+        items: apiRuns,
         activeRunId: agentTestManager.getActiveRunId(),
     });
 });
@@ -1942,7 +2103,11 @@ app.post('/agent/tests/:id/abort', (req: Request, res: Response) => {
         persistTestEvent(runId, 'aborted', 'Aborted before dispatch');
         persistTestReport(runId);
         dispatchNextAgentTestRun();
-        res.json({ success: true, run: aborted ? toApiTestRun(aborted) : null });
+        const apiRun = aborted ? toApiTestRun(aborted) : null;
+        res.json({
+            success: true,
+            ...buildTestRunEnvelope(apiRun),
+        });
         return;
     }
 

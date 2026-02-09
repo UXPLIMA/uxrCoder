@@ -143,6 +143,12 @@ export interface HealthResponse {
     timestamp: number;
     version?: string;
     instanceCount?: number;  // Number of instances server has - plugin uses to detect if resync needed
+    agent?: {
+        capabilitiesEndpoint: string;
+        bootstrapEndpoint?: string;
+        snapshotEndpoint: string;
+        schemaEndpoint: string;
+    };
 }
 
 export interface SyncResponse {
@@ -175,6 +181,7 @@ export interface AgentSnapshotInstance {
     className: string;
     name: string;
     path: string[];
+    pathString: string;
     parentId: string | null;
     childIds: string[];
     properties: Record<string, PropertyValue>;
