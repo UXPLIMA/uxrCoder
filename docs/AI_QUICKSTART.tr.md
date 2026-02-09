@@ -40,6 +40,7 @@ Bu komut:
 - erisilebilir server URL'ini bulur (`localhost` veya LAN IP),
 - bu URL'i sablona enjekte eder,
 - `/path/to/MyGame/AGENTS.md` dosyasini yazar.
+- Talimat dosya adi tam olarak `AGENTS.md` kalmalidir.
 
 Ilk mesajin sadece su olabilir:
 
@@ -53,9 +54,17 @@ Ornek:
 AGENTS.md dosyasini oku ve server-side dogrulamali coin toplama sistemi yaz, sonra smoke test kos.
 ```
 
+Test kosarken scenario icinde su alan olsun:
+```json
+{
+  "runtime": { "mode": "play", "stopOnFinish": true }
+}
+```
+
 ## 4. Neden Daha Iyi Calisir
 
 - Ajan ilk olarak `GET /agent/bootstrap` cagirir, health + capabilities + snapshot + schema tek cagriyla gelir.
+- Ajan `GET /agent/schema/commands` cagirir, command payload formati netlesir.
 - Path formati net olur (`path` array + `pathString` string).
 - Test response parse daha saglam olur (`id/status` top-level, gerekirse `run.*` fallback).
 - Her yeni sohbette uzun manuel prompt yazma ihtiyaci azalir.
@@ -64,4 +73,6 @@ AGENTS.md dosyasini oku ve server-side dogrulamali coin toplama sistemi yaz, son
 
 - `GET /health` basarisizsa ajan durmali ve engeli raporlamali.
 - Canli Studio gorevlerinde fallback olarak dogrudan dosya duzenlemeye gecmemeli.
+- Payload formatini tahmin etmek icin probe write (Tmp nesneler) yapmamali.
+- Play runtime baslatilamazsa edit-mode'a sessizce dusmemeli; blocker olarak raporlamali.
 - Gorev ancak test run ID ve final status raporlaninca tamam sayilir.

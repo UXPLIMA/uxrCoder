@@ -40,6 +40,7 @@ This command:
 - detects a reachable server URL (`localhost` or LAN IP),
 - injects it into the template,
 - writes `/path/to/MyGame/AGENTS.md`.
+- The instruction filename must stay exactly `AGENTS.md`.
 
 Then your first chat message can be only:
 
@@ -53,9 +54,17 @@ Example:
 Read AGENTS.md and implement a coin pickup system with server-side validation and a smoke test.
 ```
 
+When running tests, ensure scenario includes:
+```json
+{
+  "runtime": { "mode": "play", "stopOnFinish": true }
+}
+```
+
 ## 4. Why This Works Better
 
 - Agent starts with `GET /agent/bootstrap` so health + capabilities + snapshot + schema can be fetched in one call.
+- Agent reads `GET /agent/schema/commands` so command payload shape is explicit.
 - Path handling is explicit (`path` array + `pathString` string).
 - Test run parsing is robust (`id/status` top-level with `run.*` fallback).
 - You avoid long manual prompts for every session.
@@ -64,4 +73,6 @@ Read AGENTS.md and implement a coin pickup system with server-side validation an
 
 - If `GET /health` fails, the agent must stop and report the blocker.
 - Agent must not switch to direct file edits as fallback for live Studio tasks.
+- Agent must not run probe writes (temporary objects) to guess payload shape.
+- If play runtime cannot start, agent must report blocked runtime (not silently downgrade to edit-only checks).
 - A task is only complete after reporting a test run ID and final status.

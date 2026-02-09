@@ -13,7 +13,8 @@ This reference focuses on endpoints intended for AI agents and automation client
 Recommended call order for generic agents:
 1. `GET /health`
 2. `GET /agent/bootstrap`
-3. Fallback: `GET /agent/snapshot` + `GET /agent/schema/properties` (if not included in bootstrap)
+3. `GET /agent/schema/commands`
+4. Fallback: `GET /agent/snapshot` + `GET /agent/schema/properties` (if not included in bootstrap)
 5. `POST /agent/commands`
 6. `POST /agent/tests/run`
 7. `GET /agent/tests/:id` until final status
@@ -30,6 +31,7 @@ Conflict reasons:
 One-shot bootstrap for agents. Returns:
 - `health`
 - `capabilities`
+- `commandSchema`
 - `snapshot` (default included)
 - `schema` (default included)
 
@@ -72,6 +74,11 @@ Response shape:
 - `generatedAt`
 - `revision`
 - `classes[]` and `properties[]` with writable/type constraints
+
+### `GET /agent/schema/commands`
+Returns canonical command payload schema, aliases, and examples for `POST /agent/command(s)`.
+
+Use this endpoint instead of trial writes to discover payload shape.
 
 ## 2. Command Execution
 
@@ -143,6 +150,13 @@ Execute command list in order.
 
 Notes:
 - For target and parent refs, `id` and `path` variants are supported.
+- Common aliases are accepted for compatibility:
+- `path` -> `targetPath` (update/rename/delete/reparent)
+- `parent` -> `parentPath` (create)
+- `newName` -> `name` (rename)
+- `update` supports both:
+- `property` + `value` (single property)
+- `properties` object map (multi-property update)
 - Batch endpoint may rollback on configured transactional failure behavior.
 
 ## 3. Test Runs
@@ -155,6 +169,7 @@ Body:
 {
   "scenario": {
     "name": "spawn regression",
+    "runtime": { "mode": "play", "stopOnFinish": true },
     "steps": [
       { "type": "assertExists", "path": ["Workspace", "SpawnLocation"] }
     ]
@@ -167,6 +182,12 @@ Response compatibility:
 - `id` (top-level run id)
 - `status` (top-level run status)
 - `run` (full run object)
+
+Notes:
+- For real playtesting, set `scenario.runtime.mode = "play"`.
+- Legacy alias `scenario.runtime.mode = "server"` is treated as `"run"`.
+- If `scenario.runtime` is omitted, server default mode is `play`.
+- If requested runtime cannot be started by Studio/plugin, run returns `error` with runtime details.
 
 ### `GET /agent/tests`
 List recent runs.
@@ -259,6 +280,7 @@ Still used by plugin/editor bridge:
 - `agent.bootstrapEndpoint`
 - `agent.snapshotEndpoint`
 - `agent.schemaEndpoint`
+- `agent.commandSchemaEndpoint`
 
 Additional utility endpoints:
 - `POST /build/:format`

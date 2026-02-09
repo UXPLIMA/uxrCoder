@@ -98,6 +98,7 @@ Read AGENTS.md and execute exactly that workflow.
 
 Notes:
 - The template starts with `GET /agent/bootstrap` for one-shot discovery.
+- The template requires `GET /agent/schema/commands` to avoid trial-and-error payload probing.
 - This removes guesswork around `path` format and test response fields.
 
 ## Documentation

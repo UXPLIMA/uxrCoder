@@ -69,6 +69,8 @@ local SYNCABLE_SERVICES = {
 -- Forward declarations used by early event handlers
 local request
 local isConnected = false
+local shouldSuspendSyncForRuntime
+local runWithSuppressedSync
 
 -- =============================================================================
 -- Log Streaming Setup
@@ -81,6 +83,7 @@ local LogService = game:GetService("LogService")
 --- @param type Enum.MessageType The type of log message
 local function streamLog(message, type)
     if not isConnected then return end
+    if shouldSuspendSyncForRuntime and shouldSuspendSyncForRuntime() then return end
     
     local level = "info"
     if type == Enum.MessageType.MessageOutput then
@@ -149,6 +152,29 @@ local isInitialSyncComplete = false
 local currentAgentTestRunId = nil
 local currentAgentTestAbortRequested = false
 local currentAgentTestAttempt = nil
+
+--- Decide whether sync should be suspended because Studio is currently simulating runtime.
+--- This pauses sync both during agent-driven playtests and manual Run/Play sessions.
+local function isStudioRuntimeSessionActive()
+    local okIsRunning, isRunning = pcall(function()
+        return RunService:IsRunning()
+    end)
+    if okIsRunning and isRunning then
+        local okIsEdit, isEdit = pcall(function()
+            return RunService:IsEdit()
+        end)
+        if okIsEdit then
+            return not isEdit
+        end
+        return true
+    end
+
+    return false
+end
+
+shouldSuspendSyncForRuntime = function()
+    return currentAgentTestRunId ~= nil or isStudioRuntimeSessionActive()
+end
 
 -- =============================================================================
 -- Utility Functions
@@ -1287,7 +1313,7 @@ local function beginAgentRuntimeSession(runId, scenario, suppressSyncChanges)
     end, runtimeInfo
 end
 
-local function runWithSuppressedSync(callback, suppressSync)
+runWithSuppressedSync = function(callback, suppressSync)
     if suppressSync ~= true then
         return pcall(callback)
     end
@@ -3392,6 +3418,19 @@ local function executeAgentTestRun(runId, payload)
             .. ", restoreDestroyedInstances=" .. tostring(mutationJournal.restoreDestroyedInstances == true)
             .. ", restorePropertyChanges=" .. tostring(mutationJournal.restorePropertyChanges == true))
 
+        if runtimeInfo.requestedMode ~= "none" and runtimeInfo.started ~= true then
+            finalOutcome = {
+                status = "error",
+                message = "Runtime mode '" .. tostring(runtimeInfo.requestedMode) .. "' could not be started",
+                failureMessage = "Runtime mode '" .. tostring(runtimeInfo.requestedMode) .. "' could not be started: " .. tostring(runtimeInfo.startError or "unknown"),
+                result = {
+                    reason = "runtime_start_failed",
+                    runtime = serializeForAgentTestPayload(runtimeInfo),
+                },
+            }
+            return
+        end
+
         local startedAt = os.clock()
         local metrics = {
             totalSteps = #steps,
@@ -3801,6 +3840,7 @@ local function queueChange(changeType, instance, property)
     if not isInitialSyncComplete then return end
     if isApplyingServerChange then return end
     if isApplyingAgentTestIsolationChange then return end
+    if shouldSuspendSyncForRuntime and shouldSuspendSyncForRuntime() then return end
     
     -- Generate path
     local path = {}
@@ -3985,6 +4025,11 @@ local function syncWithServer()
     local function finishSync()
         isSyncing = false
         lastSyncTime = os.clock()
+    end
+
+    if shouldSuspendSyncForRuntime and shouldSuspendSyncForRuntime() then
+        finishSync()
+        return
     end
 
     -- Initial Sync Logic - send full DataModel if not yet synced

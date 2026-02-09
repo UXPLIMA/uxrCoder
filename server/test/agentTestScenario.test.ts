@@ -18,7 +18,7 @@ describe('normalizeAgentTestScenario', () => {
         expect(result.scenario.safety.retryBackoffFactor).toBe(2);
         expect(result.scenario.safety.maxRetryDelayMs).toBe(30000);
         expect(result.scenario.safety.allowDestructiveActions).toBe(false);
-        expect(result.scenario.runtime.mode).toBe('none');
+        expect(result.scenario.runtime.mode).toBe('play');
         expect(result.scenario.runtime.stopOnFinish).toBe(true);
         expect(result.scenario.isolation.enabled).toBe(true);
         expect(result.scenario.isolation.suppressSyncChanges).toBe(true);
@@ -71,6 +71,21 @@ describe('normalizeAgentTestScenario', () => {
         expect(result.scenario.safety.retryBackoffFactor).toBe(3);
         expect(result.scenario.safety.maxRetryDelayMs).toBe(60000);
         expect(result.scenario.safety.maxWaitSecondsPerStep).toBe(7);
+        expect(result.scenario.runtime.mode).toBe('run');
+    });
+
+    it('maps legacy runtime mode "server" to "run"', () => {
+        const result = normalizeAgentTestScenario({
+            steps: [
+                { type: 'log', message: 'runtime alias' },
+            ],
+            runtime: {
+                mode: 'server',
+            },
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
         expect(result.scenario.runtime.mode).toBe('run');
     });
 

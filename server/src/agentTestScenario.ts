@@ -111,9 +111,10 @@ function normalizeStringList(value: unknown, maxItems: number, maxLength: number
 }
 
 function normalizeRuntime(raw: Record<string, unknown> | null): AgentTestRuntimeSettings {
-    const rawMode = typeof raw?.mode === 'string' ? raw.mode.toLowerCase() : 'none';
+    const rawMode = typeof raw?.mode === 'string' ? raw.mode.toLowerCase() : 'play';
+    const normalizedMode = rawMode === 'server' ? 'run' : rawMode;
     const mode: AgentTestRuntimeSettings['mode'] =
-        rawMode === 'run' || rawMode === 'play' ? rawMode : 'none';
+        normalizedMode === 'run' || normalizedMode === 'play' ? normalizedMode : 'none';
 
     const stopOnFinish = raw?.stopOnFinish !== false;
     return { mode, stopOnFinish };

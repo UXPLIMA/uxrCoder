@@ -45,18 +45,24 @@ Typical reliable loop for agents:
 ```http
 GET /agent/bootstrap
 ```
-2. Fallback if bootstrap excludes details:
+2. Read command payload schema:
+```http
+GET /agent/schema/commands
+```
+3. Fallback if bootstrap excludes details:
 ```http
 GET /agent/snapshot
 GET /agent/schema/properties
 ```
-3. Submit command(s):
+4. Submit command(s):
 ```http
 POST /agent/command
 POST /agent/commands
 ```
-4. Handle `conflict` payloads (`not_found`, `locked`, `revision_mismatch`, `validation_failed`).
-5. Retry with updated revision/snapshot when needed.
+5. Handle `conflict` payloads (`not_found`, `locked`, `revision_mismatch`, `validation_failed`).
+6. Retry with updated revision/snapshot when needed.
+
+Do not use probe writes (temporary object creation/deletion) to infer command shape.
 
 Snapshot parsing note:
 - `path` is array-form

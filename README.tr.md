@@ -97,6 +97,7 @@ AGENTS.md dosyasını oku ve akışı aynen uygula.
 
 Notlar:
 - Şablon ilk adımda `GET /agent/bootstrap` çağrısını zorunlu kılar.
+- Şablon `GET /agent/schema/commands` çağrısını zorunlu kılar; payload deneme-yanılma ihtiyacını azaltır.
 - Böylece `path` formatı ve test response alanları tahmin edilmez, doğrudan keşfedilir.
 
 ## Dokümantasyon

@@ -148,6 +148,7 @@ export interface HealthResponse {
         bootstrapEndpoint?: string;
         snapshotEndpoint: string;
         schemaEndpoint: string;
+        commandSchemaEndpoint?: string;
     };
 }
 

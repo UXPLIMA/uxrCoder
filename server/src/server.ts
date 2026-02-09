@@ -602,48 +602,91 @@ function asAgentCommand(payload: unknown): AgentCommand | null {
     if (typeof cmd.op !== 'string') {
         return null;
     }
+    const op = cmd.op.trim().toLowerCase();
+    if (op !== 'create' && op !== 'update' && op !== 'rename' && op !== 'delete' && op !== 'reparent') {
+        return null;
+    }
 
-    return cmd as unknown as AgentCommand;
+    return {
+        ...cmd,
+        op,
+    } as unknown as AgentCommand;
 }
 
 function isStringArray(value: unknown): value is string[] {
     return Array.isArray(value) && value.every(item => typeof item === 'string');
 }
 
-function resolvePathFromTargetRef(ref: { targetId?: string; targetPath?: string[] }): string[] | null {
+function normalizePathReference(value: unknown): string[] | null {
+    if (isStringArray(value)) {
+        return value;
+    }
+
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed.length === 0) {
+            return null;
+        }
+
+        const parts = trimmed
+            .split('.')
+            .map(part => part.trim())
+            .filter(part => part.length > 0);
+        return parts.length > 0 ? parts : null;
+    }
+
+    return null;
+}
+
+function resolvePathFromTargetRef(ref: {
+    targetId?: string;
+    targetPath?: string[];
+    path?: unknown;
+}): string[] | null {
     if (typeof ref.targetId === 'string' && ref.targetId.length > 0) {
         return syncEngine.getPathById(ref.targetId) ?? null;
     }
 
-    if (isStringArray(ref.targetPath)) {
-        return syncEngine.getInstance(ref.targetPath) ? ref.targetPath : null;
+    const candidatePath = normalizePathReference(ref.targetPath ?? ref.path);
+    if (candidatePath) {
+        return syncEngine.getInstance(candidatePath) ? candidatePath : null;
     }
 
     return null;
 }
 
-function resolvePathFromParentRef(ref: { parentId?: string; parentPath?: string[] }): string[] | null {
+function resolvePathFromParentRef(ref: {
+    parentId?: string;
+    parentPath?: string[];
+    parent?: unknown;
+}): string[] | null {
     if (typeof ref.parentId === 'string' && ref.parentId.length > 0) {
         return syncEngine.getPathById(ref.parentId) ?? null;
     }
 
-    if (isStringArray(ref.parentPath)) {
-        if (ref.parentPath.length === 0) {
+    const candidatePath = normalizePathReference(ref.parentPath ?? ref.parent);
+    if (candidatePath) {
+        if (candidatePath.length === 0) {
             return [];
         }
-        return syncEngine.getInstance(ref.parentPath) ? ref.parentPath : null;
+        return syncEngine.getInstance(candidatePath) ? candidatePath : null;
     }
 
     return null;
 }
 
-function resolvePathFromNewParentRef(ref: { newParentId?: string; newParentPath?: string[] }): string[] | null {
+function resolvePathFromNewParentRef(ref: {
+    newParentId?: string;
+    newParentPath?: string[];
+    newParent?: unknown;
+}): string[] | null {
     if (typeof ref.newParentId === 'string' && ref.newParentId.length > 0) {
         return syncEngine.getPathById(ref.newParentId) ?? null;
     }
 
-    if (isStringArray(ref.newParentPath)) {
-        return syncEngine.getInstance(ref.newParentPath) ? ref.newParentPath : null;
+    const candidatePath = normalizePathReference(ref.newParentPath ?? ref.newParent);
+    if (candidatePath) {
+        return syncEngine.getInstance(candidatePath) ? candidatePath : null;
     }
 
     return null;
@@ -772,17 +815,21 @@ function executeAgentCommand(command: AgentCommand, index: number): AgentCommand
                 };
             }
 
-            if (typeof command.property !== 'string' || command.property.trim().length === 0) {
+            const commandRecord = command as unknown as Record<string, unknown>;
+            const hasSingleProperty = typeof command.property === 'string' && command.property.trim().length > 0;
+            const rawPropertiesMap = commandRecord.properties;
+            const hasPropertiesMap = !!rawPropertiesMap && typeof rawPropertiesMap === 'object' && !Array.isArray(rawPropertiesMap);
+
+            if (!hasSingleProperty && !hasPropertiesMap) {
                 return {
                     index,
                     op: command.op,
                     success: false,
-                    error: 'Missing property name',
-                    conflict: buildConflict('validation_failed', command, { field: 'property' }),
+                    error: 'Missing property update payload',
+                    conflict: buildConflict('validation_failed', command, { fields: ['property', 'value', 'properties'] }),
                 };
             }
 
-            const propertyName = command.property.trim();
             const target = syncEngine.getInstance(targetPath);
             if (!target) {
                 return {
@@ -794,31 +841,64 @@ function executeAgentCommand(command: AgentCommand, index: number): AgentCommand
                 };
             }
 
-            const validation = validateAgentPropertyUpdate(
-                target,
-                propertyName,
-                command.value as PropertyValue,
-            );
-            if (validation.ok === false) {
+            const targetId = target?.id;
+            const updates: Array<{ property: string; value: PropertyValue }> = [];
+
+            if (hasSingleProperty) {
+                updates.push({
+                    property: command.property.trim(),
+                    value: command.value as PropertyValue,
+                });
+            } else if (hasPropertiesMap) {
+                for (const [propertyName, propertyValue] of Object.entries(rawPropertiesMap as Record<string, unknown>)) {
+                    if (typeof propertyName !== 'string' || propertyName.trim().length === 0) {
+                        continue;
+                    }
+                    updates.push({
+                        property: propertyName.trim(),
+                        value: propertyValue as PropertyValue,
+                    });
+                }
+            }
+
+            if (updates.length === 0) {
                 return {
                     index,
                     op: command.op,
                     success: false,
-                    error: validation.error,
-                    conflict: buildConflict('validation_failed', command, validation.details),
+                    error: 'No valid properties to update',
+                    conflict: buildConflict('validation_failed', command, { field: 'properties' }),
                 };
             }
 
-            const targetId = target?.id;
+            for (const updateEntry of updates) {
+                const validation = validateAgentPropertyUpdate(
+                    target,
+                    updateEntry.property,
+                    updateEntry.value,
+                );
+                if (validation.ok === false) {
+                    return {
+                        index,
+                        op: command.op,
+                        success: false,
+                        error: validation.error,
+                        conflict: buildConflict('validation_failed', command, validation.details),
+                    };
+                }
 
-            const message: SyncMessage = {
-                type: 'update',
-                timestamp: Date.now(),
-                path: targetPath,
-                property: { name: propertyName, value: command.value as PropertyValue },
-            };
+                const message: SyncMessage = {
+                    type: 'update',
+                    timestamp: Date.now(),
+                    path: targetPath,
+                    property: {
+                        name: updateEntry.property,
+                        value: updateEntry.value,
+                    },
+                };
 
-            handleEditorChange(message);
+                handleEditorChange(message);
+            }
 
             const resolvedPath = targetId ? syncEngine.getPathById(targetId) ?? targetPath : targetPath;
             return {
@@ -842,7 +922,17 @@ function executeAgentCommand(command: AgentCommand, index: number): AgentCommand
                 };
             }
 
-            if (typeof command.name !== 'string' || command.name.trim().length === 0) {
+            const commandRecord = command as unknown as Record<string, unknown>;
+            const renameTo = typeof command.name === 'string' && command.name.trim().length > 0
+                ? command.name.trim()
+                : (
+                    typeof commandRecord.newName === 'string'
+                    && commandRecord.newName.trim().length > 0
+                        ? commandRecord.newName.trim()
+                        : ''
+                );
+
+            if (renameTo.length === 0) {
                 return {
                     index,
                     op: command.op,
@@ -868,7 +958,7 @@ function executeAgentCommand(command: AgentCommand, index: number): AgentCommand
                 type: 'update',
                 timestamp: Date.now(),
                 path: targetPath,
-                property: { name: 'Name', value: command.name.trim() },
+                property: { name: 'Name', value: renameTo },
             };
 
             handleEditorChange(message);
@@ -1116,6 +1206,7 @@ function buildHealthResponse(): HealthResponse {
             bootstrapEndpoint: '/agent/bootstrap',
             snapshotEndpoint: '/agent/snapshot',
             schemaEndpoint: '/agent/schema/properties',
+            commandSchemaEndpoint: '/agent/schema/commands',
         },
     };
 }
@@ -1133,6 +1224,7 @@ function buildAgentCapabilitiesManifest(): Record<string, unknown> {
         quickstart: [
             'GET /health',
             'GET /agent/bootstrap',
+            'GET /agent/schema/commands',
             'POST /agent/commands',
             'POST /agent/tests/run',
             'GET /agent/tests/:id (poll until final status)',
@@ -1144,6 +1236,7 @@ function buildAgentCapabilitiesManifest(): Record<string, unknown> {
         commands: {
             single: '/agent/command',
             batch: '/agent/commands',
+            schemaEndpoint: '/agent/schema/commands',
             ops: ['create', 'update', 'rename', 'delete', 'reparent'],
             transactionalField: 'transactional',
             conflictReasons: ['not_found', 'locked', 'revision_mismatch', 'validation_failed'],
@@ -1153,6 +1246,10 @@ function buildAgentCapabilitiesManifest(): Record<string, unknown> {
             readEndpoint: '/agent/tests/:id',
             listEndpoint: '/agent/tests',
             finalStatuses: ['passed', 'failed', 'aborted', 'error'],
+            recommendedRuntime: {
+                mode: 'play',
+                stopOnFinish: true,
+            },
             responseFields: {
                 run: ['success', 'id', 'status', 'run'],
                 read: ['success', 'id', 'status', 'run'],
@@ -1173,6 +1270,95 @@ function buildAgentCapabilitiesManifest(): Record<string, unknown> {
                 'captureArtifact',
             ],
         },
+    };
+}
+
+function buildAgentCommandSchema(): Record<string, unknown> {
+    return {
+        success: true,
+        version: 'uxr-agent-command-schema/v1',
+        request: {
+            singleEndpoint: '/agent/command',
+            batchEndpoint: '/agent/commands',
+            batchBodyFields: ['commands', 'transactional', 'continueOnError', 'baseRevision'],
+            pathRules: {
+                canonical: 'string[]',
+                aliasesAccepted: ['dot-separated string'],
+                examples: [
+                    ['Workspace', 'Part'],
+                    'Workspace.Part',
+                ],
+            },
+        },
+        commands: {
+            create: {
+                required: ['op', 'className', 'name', 'parentPath|parentId'],
+                aliases: ['parent'],
+                example: {
+                    op: 'create',
+                    parentPath: ['Workspace'],
+                    className: 'Part',
+                    name: 'Lava',
+                    properties: {
+                        Anchored: true,
+                        CanCollide: false,
+                    },
+                },
+            },
+            update: {
+                required: ['op', 'targetPath|targetId'],
+                variants: [
+                    { required: ['property', 'value'] },
+                    { required: ['properties (object map)'] },
+                ],
+                aliases: ['path'],
+                exampleSingle: {
+                    op: 'update',
+                    targetPath: ['Workspace', 'Lava'],
+                    property: 'Transparency',
+                    value: 0.2,
+                },
+                exampleMulti: {
+                    op: 'update',
+                    targetPath: ['Workspace', 'Lava'],
+                    properties: {
+                        Anchored: true,
+                        CanCollide: false,
+                    },
+                },
+            },
+            rename: {
+                required: ['op', 'targetPath|targetId', 'name'],
+                aliases: ['path', 'newName'],
+                example: {
+                    op: 'rename',
+                    targetPath: ['Workspace', 'Lava'],
+                    name: 'Lava_2',
+                },
+            },
+            delete: {
+                required: ['op', 'targetPath|targetId'],
+                aliases: ['path'],
+                example: {
+                    op: 'delete',
+                    targetPath: ['Workspace', 'OldPart'],
+                },
+            },
+            reparent: {
+                required: ['op', 'targetPath|targetId', 'newParentPath|newParentId'],
+                aliases: ['path'],
+                example: {
+                    op: 'reparent',
+                    targetPath: ['Workspace', 'Lava'],
+                    newParentPath: ['ReplicatedStorage'],
+                },
+            },
+        },
+        notes: [
+            'Use array paths as canonical format to avoid ambiguity.',
+            'Avoid probe writes (Tmp objects) to discover schema; use this endpoint instead.',
+            'Prefer one transactional batch with deterministic target paths.',
+        ],
     };
 }
 
@@ -1702,6 +1888,14 @@ app.get('/agent/schema/properties', (req: Request, res: Response) => {
 });
 
 /**
+ * Agent command schema endpoint.
+ * Returns canonical payload rules + aliases so generic agents do not need probe writes.
+ */
+app.get('/agent/schema/commands', (_req: Request, res: Response) => {
+    res.json(buildAgentCommandSchema());
+});
+
+/**
  * Machine-readable capabilities manifest for generic agents.
  * This is intentionally compact so agents can bootstrap without scanning long docs.
  */
@@ -1726,6 +1920,7 @@ app.get('/agent/bootstrap', (req: Request, res: Response) => {
         baseUrl: resolvePublicBaseUrl(),
         health: buildHealthResponse(),
         capabilities: buildAgentCapabilitiesManifest(),
+        commandSchema: buildAgentCommandSchema(),
         defaults: {
             includeSnapshot: true,
             includeSchema: true,
