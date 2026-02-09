@@ -1,26 +1,27 @@
 # uxrCoder VS Code Extension
 
-Official VS Code extension for browsing and editing Roblox DataModel state synchronized by uxrCoder.
+VS Code extension for browsing and editing Roblox DataModel state synchronized by uxrCoder.
 
 ## Features
 
-- Roblox Explorer tree view in activity bar
-- Property editor webview
-- Class browser webview
-- Script open/edit workflow for mapped Lua files
-- Context actions for create, rename, delete, copy path, copy/paste
+- Roblox Explorer tree view in the activity bar
+- Property Editor webview
+- Class Browser webview
+- Context actions: insert, rename, delete, copy path, copy/paste instance
+- Script open/edit flow for mapped Lua scripts
+- Runtime controls: play, run, stop
 - Build/export commands (`.rbxlx`, `.rbxmx`)
-- Sourcemap regeneration command
-- Utility commands for Wally, Selene, StyLua project setup flows
+- Sourcemap regeneration
+- Project utilities (Wally, Selene, StyLua, project bootstrap helpers)
 
 ## Commands
 
-Core connection:
+Connection:
 - `robloxSync.connect`
 - `robloxSync.disconnect`
 - `robloxSync.refresh`
 
-Explorer actions:
+Explorer:
 - `robloxSync.insertObject`
 - `robloxSync.rename`
 - `robloxSync.delete`
@@ -59,9 +60,9 @@ npm install
 npm run compile
 ```
 
-Run extension dev host:
-- Open this folder in VS Code
-- Press `F5`
+Run Extension Development Host:
+- open this folder in VS Code
+- press `F5`
 
 Package extension:
 
@@ -77,5 +78,6 @@ npm run package
 ## Related Docs
 
 - `../README.md`
+- `../README.tr.md`
 - `../docs/INSTALLATION.md`
 - `../docs/USAGE.md`

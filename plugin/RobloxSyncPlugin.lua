@@ -2,7 +2,7 @@
     uxrCoder Plugin
     ================================================================================
 
-    Real-time two-way synchronization between Roblox Studio and VS Code/Antigravity.
+    Real-time two-way synchronization between Roblox Studio and VS Code.
 
     This plugin communicates with a local Node.js server via HttpService to enable
     seamless development workflow between Roblox Studio and external editors.
@@ -18,7 +18,7 @@
 
     Author: UXPLIMA
     License: MIT
-    Version: 1.0.0
+    Version: 1.1.0
 ]]
 
 -- =============================================================================
@@ -4220,8 +4220,8 @@ end)
 -- Startup message
 print([[
 ╔═══════════════════════════════════════════════════════════╗
-║   uxrCoder Plugin v1.0.0                             ║
-║   Real-time sync with VS Code/Antigravity                ║
+║   uxrCoder Plugin v1.1.0                             ║
+║   Real-time sync with VS Code                         ║
 ║                                                           ║
 ║   Use the toolbar buttons to control sync                ║
 ╚═══════════════════════════════════════════════════════════╝

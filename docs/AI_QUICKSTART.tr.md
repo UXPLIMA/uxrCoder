@@ -1,78 +1,78 @@
-# AI Quickstart (Son Kullanici)
+# Assistant Hızlı Başlangıç
 
-Bu dokuman, herhangi bir AI ajana uxrCoder uzerinden Roblox oyununu duzenletmenin en hizli ve stabil yoludur.
+Bu doküman, bir assistant aracının uxrCoder ile güvenli ve hızlı şekilde çalışması için en kısa akışı anlatır.
 
-## 1. Dogru Klasoru Ac
+## 1. Doğru Klasörü Aç
 
-AI aracinda sadece `server/` degil, **oyun workspace kok klasorunu** ac.
+Assistant aracında sadece `server/` değil, oyun workspace kök klasörünü aç.
 
-Ajan su dosyalari gorebilmeli:
-- oyun dosyalari (`workspace/` mapping)
-- `AGENTS.md` talimat dosyasi
+Assistant şu dosyaları görebilmeli:
+- oyun dosyaları ve mapping kökü
+- `AGENTS.md` talimat dosyası
 
-## 2. uxrCoder'i Baslat
+## 2. uxrCoder'i Başlat
 
-`uxrCoder` repo kokunden:
+Repo kökünden:
 
 ```bash
 npm run dev
 ```
 
-Roblox Studio icinde:
-- uxrCoder pluginini ac
-- initial sync calistir
+Roblox Studio içinde:
+- uxrCoder pluginini aç
+- initial sync çalıştır
 
-Server kontrolu:
+Doğrulama:
 
 ```bash
 curl http://127.0.0.1:34872/health
 ```
 
-## 3. Ajana Sabit Kural Dosyasi Ver
-
-`AGENTS.md` dosyasini otomatik uret:
+## 3. Sabit Kural Dosyası Üret
 
 ```bash
 npm run agent:init -- --project /path/to/MyGame --force
 ```
 
 Bu komut:
-- erisilebilir server URL'ini bulur (`localhost` veya LAN IP),
-- bu URL'i sablona enjekte eder,
-- `/path/to/MyGame/AGENTS.md` dosyasini yazar.
-- Talimat dosya adi tam olarak `AGENTS.md` kalmalidir.
+- erişilebilir server URL'ini bulur (`localhost` veya LAN IP),
+- bu URL'i şablona ekler,
+- `/path/to/MyGame/AGENTS.md` dosyasını yazar.
 
-Ilk mesajin sadece su olabilir:
+Dosya adı zorunluluğu:
+- talimat dosya adı tam olarak `AGENTS.md` olmalıdır.
 
-```text
-AGENTS.md dosyasini oku ve <ozellik> gelistir.
-```
-
-Ornek:
+## 4. İlk Prompt Örneği
 
 ```text
-AGENTS.md dosyasini oku ve server-side dogrulamali coin toplama sistemi yaz, sonra smoke test kos.
+AGENTS.md dosyasını oku ve <özellik> geliştir; ardından test koşup run ID ve final durumu raporla.
 ```
 
-Test kosarken scenario icinde su alan olsun:
+Örnek:
+
+```text
+AGENTS.md dosyasını oku ve server-side doğrulamalı coin toplama sistemi geliştir; sonra smoke test koş.
+```
+
+Test koşarken runtime modu belirt:
+
 ```json
 {
   "runtime": { "mode": "play", "stopOnFinish": true }
 }
 ```
 
-## 4. Neden Daha Iyi Calisir
+## 5. Bu Akış Neden Sağlam?
 
-- Ajan ilk olarak `GET /agent/bootstrap` cagirir, health + capabilities + snapshot + schema tek cagriyla gelir.
-- Ajan `GET /agent/schema/commands` cagirir, command payload formati netlesir.
-- Path formati net olur (`path` array + `pathString` string).
-- Test response parse daha saglam olur (`id/status` top-level, gerekirse `run.*` fallback).
-- Her yeni sohbette uzun manuel prompt yazma ihtiyaci azalir.
+- `GET /agent/bootstrap` ile health + capabilities + opsiyonel snapshot/schema tek çağrıda gelir.
+- `GET /agent/schema/commands`, payload tahminini ortadan kaldırır.
+- `path` (array) ve `pathString` (string) formatları net ve hedefleme için uygundur.
+- Test cevapları hem top-level (`id`, `status`) hem `run.*` fallback ile uyumludur.
 
-## 5. Hata Politikai (Onemli)
+## 6. Hata Politikası
 
-- `GET /health` basarisizsa ajan durmali ve engeli raporlamali.
-- Canli Studio gorevlerinde fallback olarak dogrudan dosya duzenlemeye gecmemeli.
-- Payload formatini tahmin etmek icin probe write (Tmp nesneler) yapmamali.
-- Play runtime baslatilamazsa edit-mode'a sessizce dusmemeli; blocker olarak raporlamali.
-- Gorev ancak test run ID ve final status raporlaninca tamam sayilir.
+- `GET /health` başarısızsa dur ve engeli raporla.
+- Canlı Studio görevlerinde doğrudan dosya düzenlemeye fallback yapma.
+- Payload formatı öğrenmek için probe write kullanma.
+- Play runtime başlatılamazsa blocker olarak raporla.
+- Görev, run ID ve final durum raporlanmadan tamamlanmış sayılmaz.

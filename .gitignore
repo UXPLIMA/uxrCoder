@@ -8,13 +8,13 @@
 
 # Dependencies
 node_modules/
-package-lock.json
 
 # IDE and System
 .vscode/
 .DS_Store
 *.swp
 *.log
+*.pid
 
 # Project specific
 vscode-extension/*.vsix
@@ -32,3 +32,10 @@ verify_output.txt
 verify_dist_output.txt
 verification_result.txt
 test_output.txt
+
+# Test/build caches
+coverage/
+**/coverage/
+.nyc_output/
+.vitest/
+*.tsbuildinfo

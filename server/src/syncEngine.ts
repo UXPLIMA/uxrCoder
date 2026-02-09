@@ -147,7 +147,7 @@ export class SyncEngine {
     // =========================================================================
 
     /**
-     * Apply a change from VS Code/Antigravity editor.
+     * Apply a change from an editor client.
      */
     applyChange(message: SyncMessage): void {
         this.applyChangeInternal(message);

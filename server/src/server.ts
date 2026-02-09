@@ -1,7 +1,7 @@
 /**
  * @fileoverview uxrCoder Server - Main entry point.
  *
- * This server acts as a bridge between Roblox Studio and VS Code/Antigravity.
+ * This server acts as a bridge between Roblox Studio and VS Code tools.
  * It provides:
  * - HTTP REST API for Roblox plugin communication
  * - WebSocket server for real-time VS Code extension updates
@@ -117,9 +117,9 @@ const scheduleSourcemapGeneration = () => {
     if (sourcemapTimeout) clearTimeout(sourcemapTimeout);
     sourcemapTimeout = setTimeout(() => {
         if (projectConfig) {
-            // console.log('🗺️ Regenerating sourcemap.json...');
+            // console.log('[LSP] Regenerating sourcemap.json...');
             sourcemapGenerator.generate(projectConfig).catch(err => {
-                console.error('❌ Failed to regenerate sourcemap:', err);
+                console.error('[ERROR] Failed to regenerate sourcemap:', err);
             });
         }
     }, 1000);
@@ -553,7 +553,7 @@ function validateBaseRevision(req: Request): { ok: true } | { ok: false; status:
 }
 
 /**
- * Process synchronization messages received from the VS Code/Antigravity editor.
+ * Process synchronization messages received from editor clients.
  * 
  * @param message - The synchronization message to process.
  */
@@ -1869,7 +1869,7 @@ app.post('/changes/confirm', (req: Request, res: Response) => {
 
 /**
  * Agent snapshot endpoint.
- * Returns deterministic indexed view for AI agents.
+ * Returns deterministic indexed view for automation clients.
  */
 app.get('/agent/snapshot', (_req: Request, res: Response) => {
     res.json(agentDerivedCache.getSnapshot());
@@ -2757,7 +2757,7 @@ server.listen(config.port, config.host, () => {
     console.log(`
 ╔═══════════════════════════════════════════════════════════╗
 ║                                                           ║
-║   uxrCoder Server v1.0.0                             ║
+║   uxrCoder Server v1.1.0                             ║
 ║                                                           ║
 ║   HTTP:      http://${config.host}:${config.port}                       ║
 ║   WebSocket: ws://${config.host}:${config.port}                         ║

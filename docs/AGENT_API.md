@@ -2,7 +2,7 @@
 
 Base URL (default): `http://127.0.0.1:34872`
 
-This reference focuses on endpoints intended for AI agents and automation clients.
+This reference focuses on endpoints intended for automation assistants and clients.
 
 ## Conventions
 

@@ -1,18 +1,18 @@
-# AI Quickstart (End User)
+# Assistant Quickstart
 
-This is the fastest reliable flow to let any AI agent edit and test your Roblox game through uxrCoder.
+This is the fastest reliable flow to let an assistant operate uxrCoder safely.
 
 ## 1. Open the Correct Folder
 
-Open your **game workspace root** in the AI tool, not just `server/`.
+Open your game workspace root in the assistant tool (not only `server/`).
 
-The agent should see:
-- your game files (`workspace/` mapping)
-- `AGENTS.md` instructions
+The assistant should see:
+- game files and mapping root
+- `AGENTS.md` instruction file
 
 ## 2. Start uxrCoder
 
-From `uxrCoder` repository root:
+From repository root:
 
 ```bash
 npm run dev
@@ -22,57 +22,57 @@ In Roblox Studio:
 - enable the uxrCoder plugin
 - trigger initial sync
 
-Verify server:
+Verify:
 
 ```bash
 curl http://127.0.0.1:34872/health
 ```
 
-## 3. Give the Agent a Stable Rule File
-
-Generate `AGENTS.md` automatically:
+## 3. Generate a Stable Rule File
 
 ```bash
 npm run agent:init -- --project /path/to/MyGame --force
 ```
 
 This command:
-- detects a reachable server URL (`localhost` or LAN IP),
+- discovers a reachable server URL (`localhost` or LAN IP),
 - injects it into the template,
 - writes `/path/to/MyGame/AGENTS.md`.
-- The instruction filename must stay exactly `AGENTS.md`.
 
-Then your first chat message can be only:
+Filename requirement:
+- the instruction file must stay exactly `AGENTS.md`.
+
+## 4. Start Prompt
 
 ```text
-Read AGENTS.md and implement <your feature>.
+Read AGENTS.md and implement <feature>, then run tests and report run ID + final status.
 ```
 
 Example:
 
 ```text
-Read AGENTS.md and implement a coin pickup system with server-side validation and a smoke test.
+Read AGENTS.md and implement a coin pickup system with server-side validation, then run a smoke test.
 ```
 
-When running tests, ensure scenario includes:
+When running tests, include runtime mode:
+
 ```json
 {
   "runtime": { "mode": "play", "stopOnFinish": true }
 }
 ```
 
-## 4. Why This Works Better
+## 5. Why This Flow Works
 
-- Agent starts with `GET /agent/bootstrap` so health + capabilities + snapshot + schema can be fetched in one call.
-- Agent reads `GET /agent/schema/commands` so command payload shape is explicit.
-- Path handling is explicit (`path` array + `pathString` string).
-- Test run parsing is robust (`id/status` top-level with `run.*` fallback).
-- You avoid long manual prompts for every session.
+- `GET /agent/bootstrap` provides health + capabilities + optional snapshot/schema in one call.
+- `GET /agent/schema/commands` removes payload guesswork.
+- `path` (array) and `pathString` (string) are explicit for robust targeting.
+- Test responses are compatible at both top-level (`id`, `status`) and fallback (`run.*`).
 
-## 5. Failure Policy (Important)
+## 6. Failure Policy
 
-- If `GET /health` fails, the agent must stop and report the blocker.
-- Agent must not switch to direct file edits as fallback for live Studio tasks.
-- Agent must not run probe writes (temporary objects) to guess payload shape.
-- If play runtime cannot start, agent must report blocked runtime (not silently downgrade to edit-only checks).
-- A task is only complete after reporting a test run ID and final status.
+- If `GET /health` fails, stop and report blocker.
+- Do not fall back to direct local-file edits for live Studio tasks.
+- Do not use probe writes to guess payload format.
+- If runtime play mode cannot start, report blocked runtime.
+- A task is complete only after reporting run ID and final status.

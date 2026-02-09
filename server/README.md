@@ -1,52 +1,58 @@
 # uxrCoder Server
 
-Node.js backend for Roblox Studio, VS Code extension, and AI agent orchestration.
+Node.js backend that coordinates Roblox Studio plugin sync, VS Code extension updates, and automation APIs.
 
 ## Responsibilities
 
-- In-memory canonical DataModel state (`SyncEngine`)
-- HTTP APIs for plugin sync and agent operations
-- WebSocket broadcast channel for editor clients
-- Filesystem projection and watcher integration
-- Autonomous test queue and artifact persistence
-- Debug/profile/export tooling for reproducible triage
+- Canonical in-memory DataModel state (`SyncEngine`)
+- HTTP sync bridge for plugin communication
+- WebSocket gateway for extension clients
+- Filesystem projection and watch-loop control
+- Automation command execution with lock/revision/idempotency safety
+- Autonomous test orchestration with reports and artifacts
+- Debug export and profiling endpoints
 
-## Run
+## Development
+
+Install and run:
 
 ```bash
 npm install
 npm run dev
 ```
 
-Build:
+Build and start:
 
 ```bash
 npm run build
 npm start
 ```
 
-Tests:
+Test:
 
 ```bash
 npm test
 ```
 
-## Core Endpoints
+## Endpoint Surface
 
-Sync bridge:
+### Sync Bridge
 - `GET /health`
 - `POST /sync`
 - `POST /sync/delta`
 - `GET /changes`
 - `POST /changes/confirm`
 
-Agent plane:
+### Automation and Discovery
+- `GET /agent/bootstrap`
+- `GET /agent/capabilities`
 - `GET /agent/snapshot`
 - `GET /agent/schema/properties`
+- `GET /agent/schema/commands`
 - `POST /agent/command`
 - `POST /agent/commands`
 
-Autonomous tests:
+### Test Orchestration
 - `POST /agent/tests/run`
 - `GET /agent/tests`
 - `GET /agent/tests/:id`
@@ -56,12 +62,12 @@ Autonomous tests:
 - `GET /agent/tests/:id/artifacts`
 - `GET /agent/tests/metrics`
 
-Observability:
+### Diagnostics
 - `GET /agent/locks`
 - `POST /agent/debug/export`
 - `GET /agent/debug/profile`
 
-Build/export:
+### Build and Utility
 - `POST /build/:format`
 - `POST /build/rbxmx`
 - `POST /sourcemap/regenerate`
@@ -73,15 +79,13 @@ Build/export:
 - `SYNC_INTERVAL` (default `100`)
 - `WORKSPACE_PATH` (default `./workspace`)
 
-## Performance Utilities
-
-Large-tree synthetic profile:
+## Performance Utility
 
 ```bash
 npm run profile:large-tree
 ```
 
-Optional env knobs:
+Optional knobs:
 - `FOLDER_COUNT`
 - `PARTS_PER_FOLDER`
 - `ITERATIONS`
@@ -90,6 +94,7 @@ Optional env knobs:
 
 ## Related Docs
 
-- `../docs/ARCHITECTURE.md`
+- `../README.md`
 - `../docs/AGENT_API.md`
+- `../docs/ARCHITECTURE.md`
 - `../docs/agent-test-harness.md`

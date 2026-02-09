@@ -1,6 +1,6 @@
 # Usage Guide
 
-This document covers day-to-day workflows for Studio users, VS Code users, and AI agents.
+This document covers day-to-day workflows for Studio users, VS Code users, and automation assistants.
 
 ## 1. Core Developer Workflow
 

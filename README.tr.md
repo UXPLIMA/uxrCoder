@@ -5,7 +5,7 @@
 <h1 align="center">uxrCoder</h1>
 
 <p align="center">
-  Roblox Studio ↔ VS Code/AI senkronizasyonunu deterministik, test edilebilir ve yayın kalitesinde yöneten platform.
+  Roblox Studio ↔ VS Code geliştirme sürecini deterministik, izlenebilir ve otomasyona uygun hale getiren platform.
 </p>
 
 <p align="center">
@@ -15,50 +15,57 @@
   <img src="https://img.shields.io/badge/S%C3%BCr%C3%BCm-v1.1.0-orange" alt="Sürüm v1.1.0">
 </p>
 
-## uxrCoder Ne Çözer?
+## Genel Bakış
 
-uxrCoder; Roblox Studio, yerel dosya sistemi, VS Code ve AI agent akışlarını tek bir deterministik proje durumunda tutar.
+`uxrCoder`; Roblox Studio durumu, yerel dosyalar ve VS Code araçlarını tek bir tutarlı proje durumu etrafında toplar.
 
-Hedef kullanım:
-- VS Code üzerinden günlük script/property geliştirme,
-- AI agentlerin Explorer benzeri güvenilir işlem yapabilmesi,
-- otonom test akışları ve artifact üretimi,
-- conflict/hata durumlarında tekrar üretilebilir debug.
+Hedeflediği ekipler:
+- Studio ve dosya sistemi arasında çift yönlü, tutarlı senkron isteyenler,
+- API üzerinden güvenli nesne/property değişikliği yönetmek isteyenler,
+- otomatik test koşup rapor/artifact saklamak isteyenler,
+- hata durumlarını tekrar üretilebilir şekilde analiz etmek isteyenler.
 
-## Öne Çıkan Yetenekler
+## Neden uxrCoder?
 
-### 1) Deterministik Çift Yönlü Sync
-- Plugin -> server sync (`/sync`, `/sync/delta`).
-- Editor/server -> plugin değişiklik kuyruğu (`/changes`, `/changes/confirm`).
-- Çakışma güvenli isimlendirme (`Folder`, `Folder_2`, `Folder_3`, ...).
-- Reparent/rename sonrası stabil `id -> path` çözümleme.
+- Rename/reparent çakışmalarında deterministik sonuç.
+- `id`, `path` ve `revision` tabanlı stabil hedefleme.
+- Property değişikliklerinde schema destekli doğrulama.
+- Otomasyon ve assistant entegrasyonuna uygun API yüzeyi.
+- Kuyruk, retry, isolation cleanup ve artifact içeren test altyapısı.
+- Repro bundle ve profile endpointleriyle hızlı triage.
 
-### 2) Agent Control Plane
-- Yetenek keşif API'si: `GET /agent/capabilities`
-- Snapshot API: `GET /agent/snapshot`
-- Property schema API: `GET /agent/schema/properties`
-- Command API: `POST /agent/command`, `POST /agent/commands`
-- Locking, revision check, idempotency, conflict payload yapısı.
-- Property güncellemelerinde plugin kuyruğundan önce doğrulama.
+## Ana Yetenekler
 
-### 3) Otonom Playtest Altyapısı
-- Test orkestrasyon endpointleri (`/agent/tests/*`).
-- Plugin tarafı step runner (assert + mutation).
-- Harness entegrasyonu (`BindableFunction`, `BindableEvent`, `ModuleScript`).
-- Isolation cleanup (create/destroy/property rollback best-effort).
-- Screenshot artifact ve opsiyonel baseline assert/record akışı.
+### 1. Canlı Senkronizasyon Katmanı
+- Plugin -> server: `POST /sync`, `POST /sync/delta`
+- Server/editor -> plugin kuyruk: `GET /changes`, `POST /changes/confirm`
+- Dosya yansıtma + watcher döngü koruması
+- Deterministik kardeş isimlendirme ve stabil `id -> path` çözümleme
 
-### 4) Gözlemlenebilirlik ve Debug
-- Test metrikleri: `GET /agent/tests/metrics`
-- Lock teşhis: `GET /agent/locks`
+### 2. Otomasyon ve Kontrol Katmanı
+- Başlangıç keşfi: `GET /agent/bootstrap`, `GET /agent/capabilities`
+- Durum ve schema: `GET /agent/snapshot`, `GET /agent/schema/properties`, `GET /agent/schema/commands`
+- Komutlar: `POST /agent/command`, `POST /agent/commands`
+- Güvenlik mekanizmaları: lock manager, idempotency key, base revision kontrolü, conflict payload modeli
+
+### 3. Otonom Test Katmanı
+- Senaryo çalıştırma: `POST /agent/tests/run`
+- Çalışma yaşam döngüsü: `GET /agent/tests`, `GET /agent/tests/:id`, `POST /agent/tests/:id/abort`
+- Event alım ve kayıt: `POST /agent/tests/events`
+- Rapor ve artifact: `GET /agent/tests/:id/report`, `GET /agent/tests/:id/artifacts`
+- Ekran görüntüsü baseline modları: `assert`, `record`, `assert_or_record`
+
+### 4. Gözlemlenebilirlik ve Debug
+- Kuyruk/çalışma metrikleri: `GET /agent/tests/metrics`
+- Lock teşhisleri: `GET /agent/locks`
 - Repro bundle export: `POST /agent/debug/export`
-- Performans profile: `GET /agent/debug/profile`
-- 100k+ instance sentetik benchmark scripti.
+- Sıcak nokta profilleme: `GET /agent/debug/profile`
 
-### 5) Geliştirici Araçları
-- VS Code Roblox Explorer + Property Editor + Class Browser.
-- `.rbxlx` ve `.rbxmx` build/export endpointleri.
-- Luau araçları için sourcemap yenileme endpointi.
+### 5. VS Code Eklenti Akışı
+- Explorer tree, property editor, class browser
+- Insert/rename/delete ve reparent dostu düzenleme komutları
+- Script açma/düzenleme akışı
+- Runtime/build komutları ve sourcemap yenileme
 
 ## Hızlı Başlangıç
 
@@ -67,69 +74,71 @@ Hedef kullanım:
 npm run setup
 ```
 
-2. Sync server başlat
+2. Sunucuyu başlat
 ```bash
 npm run dev
 ```
 
 3. Roblox plugin kur
-- `plugin/RobloxSyncPlugin.lua` dosyasını Roblox local plugin klasörüne kopyala.
+- `plugin/RobloxSyncPlugin.lua` dosyasını yerel Roblox plugin klasörüne kopyala.
 
 4. VS Code extension host çalıştır
-- `vscode-extension/` klasörünü aç, `F5` ile Extension Development Host başlat.
+- `vscode-extension/` klasörünü VS Code ile aç ve `F5` ile başlat.
 
 5. Sağlık kontrolü
 ```bash
 curl http://127.0.0.1:34872/health
 ```
 
-## AI Agent Başlangıç (En Kısa Yol)
+## Assistant İçin Hızlı Onboarding
 
-1. Oyun kökü için `AGENTS.md` üret:
+Oyun çalışma klasöründe `AGENTS.md` oluştur:
+
 ```bash
 npm run agent:init -- --project /path/to/MyGame --force
 ```
 
-2. AI sohbetine şunu yaz:
-```text
-AGENTS.md dosyasını oku ve akışı aynen uygula.
-```
+İlk mesaj olarak şu yeterlidir:
 
-Notlar:
-- Şablon ilk adımda `GET /agent/bootstrap` çağrısını zorunlu kılar.
-- Şablon `GET /agent/schema/commands` çağrısını zorunlu kılar; payload deneme-yanılma ihtiyacını azaltır.
-- Böylece `path` formatı ve test response alanları tahmin edilmez, doğrudan keşfedilir.
+```text
+AGENTS.md dosyasını oku ve <özellik> geliştir; ardından test koşup run ID ve final durumu raporla.
+```
 
 ## Dokümantasyon
 
+- Ana README (EN): `README.md`
+- Dokümantasyon indeksi (EN): `docs/README.md`
+- Dokümantasyon indeksi (TR): `docs/README.tr.md`
 - Kurulum: `docs/INSTALLATION.md`
 - Kullanım akışları: `docs/USAGE.md`
 - Konfigürasyon referansı: `docs/CONFIGURATION.md`
 - Mimari: `docs/ARCHITECTURE.md`
-- Agent API referansı: `docs/AGENT_API.md`
-- AI quickstart (EN): `docs/AI_QUICKSTART.md`
-- AI quickstart (TR): `docs/AI_QUICKSTART.tr.md`
+- API referansı: `docs/AGENT_API.md`
+- Assistant quickstart (EN): `docs/AI_QUICKSTART.md`
+- Assistant quickstart (TR): `docs/AI_QUICKSTART.tr.md`
 - AGENTS şablonu: `docs/AGENTS_TEMPLATE.md`
-- Agent test harness rehberi: `docs/agent-test-harness.md`
+- Test harness rehberi: `docs/agent-test-harness.md`
 - Uçtan uca tutorial (EN): `docs/TUTORIAL.md`
 - Uçtan uca tutorial (TR): `docs/TUTORIAL.tr.md`
 - Release checklist: `docs/RELEASE_CHECKLIST.md`
 
-## Sürüm Durumu
+## Proje Durumu
 
-Bu repo `v1.1.0` yayın hazırlığına uygundur:
-- server testleri geçiyor,
-- server + extension build geçiyor,
-- çok dilli README ve güncel dokümantasyon hazır,
-- roadmap release kapanışına göre güncel.
+Güncel sürüm hattı: `v1.1.0`.
+
+Depoda şu katmanlar hazır durumdadır:
+- Studio ↔ dosya sistemi ↔ extension arasında production seviyesinde sync akışı,
+- schema ve conflict kontratları ile otomasyon API seti,
+- otonom test, artifact ve rapor saklama,
+- debug/profile endpointleri ve release dokümantasyonu.
 
 ## Katkı ve Güvenlik
 
 - Katkı rehberi: `CONTRIBUTING.md`
 - Güvenlik politikası: `SECURITY.md`
-- Değişiklik günlüğü: `CHANGELOG.md`
+- Değişiklik geçmişi: `CHANGELOG.md`
 - Yol haritası: `ROADMAP.md`
 
 ## Lisans
 
-MIT. `LICENSE` dosyasına bakın.
+MIT. Ayrıntı için `LICENSE` dosyasına bak.

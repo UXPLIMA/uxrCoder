@@ -218,7 +218,7 @@ async function main() {
     console.log(`Detected server: ${winner.baseUrl}`);
     console.log(`Health version: ${winner.payload?.version ?? 'unknown'}`);
     console.log('');
-    console.log('First message to AI:');
+    console.log('First prompt example:');
     console.log('Read AGENTS.md and implement <feature>, then run tests and report run ID + final status.');
 }
 
